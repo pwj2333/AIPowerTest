@@ -9,14 +9,22 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Serve the compiled SPA with a small production web server.
-FROM nginx:1.27-alpine AS runtime
+# Serve the SPA and persist application data with the Node standard library.
+FROM node:22-alpine AS runtime
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+WORKDIR /app
+COPY --from=build /app/dist ./dist
+COPY server.mjs ./server.mjs
+RUN mkdir -p /app/data && chown -R node:node /app
 
-EXPOSE 80
+ENV PORT=3000
+ENV DATA_FILE=/app/data/assessment.json
+USER node
+EXPOSE 3000
+VOLUME ["/app/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/healthz || exit 1
+
+CMD ["node", "server.mjs"]
 

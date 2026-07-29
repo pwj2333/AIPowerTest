@@ -7,23 +7,33 @@ import { assessmentRepository } from "../domain/store";
 describe("employee assessment flow", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     assessmentRepository.reset();
   });
 
-  it("completes all questions and shows the level and action plan", () => {
+  it("completes all questions and shows the level and action plan", async () => {
     const campaign = assessmentRepository.createCampaign({ name: "测试批次" });
-    const [participant] = assessmentRepository.importParticipants(campaign.id, [
+    assessmentRepository.importParticipants(campaign.id, [
       { name: "测试员工", department: "运营部", position: "专员" }
-    ]).imported;
+    ]);
 
     render(
-      <MemoryRouter initialEntries={[`/assessment/${participant.token}`]}>
+      <MemoryRouter initialEntries={["/"]}>
         <App />
       </MemoryRouter>,
     );
 
+    expect(screen.queryByRole("button", { name: "开始答题" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "其他员工" } });
+    fireEvent.click(screen.getByRole("button", { name: "进入测评" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("未找到该姓名，请联系管理员");
+
+    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "测试员工" } });
+    fireEvent.click(screen.getByRole("button", { name: "进入测评" }));
+    expect(await screen.findByText("姓名核验成功")).toBeInTheDocument();
+    expect(screen.getByText("运营部")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "开始答题" }));
-    expect(screen.getByText("第 1 / 20 题")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "题目轨迹" })).toBeInTheDocument();
 
     for (let questionNumber = 1; questionNumber <= 20; questionNumber += 1) {
       fireEvent.click(screen.getByTestId("option-3"));
@@ -34,7 +44,7 @@ describe("employee assessment flow", () => {
       }
     }
 
-    expect(screen.getAllByText("荣耀王者级").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("荣耀王者级")).length).toBeGreaterThan(0);
     expect(screen.getByText(/行动任务/)).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
   });

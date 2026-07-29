@@ -87,27 +87,85 @@ const createQuestion = (
 ): AssessmentQuestion => ({ id, level, dimension, category, prompt, options: makeOptions(id, options) });
 
 export const questions: AssessmentQuestion[] = [
-  createQuestion("q1", 1, "office", "AI 工具选择", "需要快速获得一版非正式文案初稿时，你通常如何开始？", ["先不使用 AI，自己从头撰写。", "随意选择一个工具，输入一句简单要求。", "选择可用的对话式 AI，并说明任务类型。", "选择合适工具后，说明任务、受众、语气和交付格式。"]),
-  createQuestion("q2", 1, "office", "清晰提问", "要让 AI 帮你改写一段通知，你会提供哪些信息？", ["只说“帮我改一下”。", "给出原文并说“更正式”。", "给原文、受众和期望语气。", "给原文、受众、语气、篇幅、不能改变的事实和示例格式。"]),
-  createQuestion("q3", 2, "office", "材料处理", "面对一份会议录音整理稿，需要生成行动清单时，你会怎么做？", ["直接复制原文发给同事。", "让 AI 总结，不再检查。", "上传已脱敏的材料，要求生成事项和负责人。", "上传已授权材料，指定行动项模板，并逐条与原文核对。"]),
-  createQuestion("q4", 2, "office", "结果核验", "AI 生成了一份包含日期和数字的汇报内容，你会如何处理？", ["直接提交，因为文字看起来通顺。", "只修改明显错别字。", "抽查几个关键数字和日期。", "回到原始资料逐项核验事实、数字和引用，并保留人工判断。"]),
-  createQuestion("q5", 2, "office", "提示词迭代", "AI 的第一版公文初稿不符合单位格式时，你会怎么改进？", ["放弃使用 AI。", "重复发送同一句提示词。", "补充格式要求后重新生成。", "指出具体偏差，补充格式样例、禁用表达和验收清单，再迭代。"]),
-  createQuestion("q6", 3, "scenario", "场景识别", "你发现团队每周都要手工整理几十条客户反馈，最合适的 AI 切入方式是？", ["立即让 AI 全自动回复所有客户。", "让 AI 随机生成一份总结。", "让 AI 对反馈分类和汇总，人工复核后使用。", "先定义输入、分类规则、人工边界和验收指标，再做小范围试点。"]),
-  createQuestion("q7", 3, "scenario", "价值判断", "评估一个 AI 场景是否值得推广时，你会优先关注什么？", ["工具是否热门。", "生成内容是否看起来丰富。", "是否能节省个人时间。", "任务频率、可标准化程度、风险、业务价值和可衡量成效。"]),
-  createQuestion("q8", 3, "scenario", "人机边界", "在涉及对外承诺的内容生成场景中，你会如何设置流程？", ["让 AI 自动发送，提升速度。", "生成后让任何人随意看看。", "指定同事在发送前检查。", "明确 AI 只生成草稿、人工审批人、不可交给 AI 的信息和异常升级路径。"]),
-  createQuestion("q9", 4, "workflow", "流程拆解", "一个高频的资料初审任务已经验证可以用 AI 辅助，下一步你会？", ["每次临时提问。", "把提示词发到群里。", "写下主要步骤供自己复用。", "把输入、处理、审核、输出和异常情况拆成团队可复用流程。"]),
-  createQuestion("q10", 4, "workflow", "流程标准化", "要让同事稳定复用同一个 AI 工作流，最有效的做法是？", ["口头介绍一次。", "分享一个截图。", "提供提示词和操作说明。", "提供流程模板、输入标准、责任人、验收点和版本记录。"]),
-  createQuestion("q11", 4, "workflow", "异常处理", "AI 流程在少数复杂案例中反复给出不可靠结果，你会？", ["继续执行，偶尔出错可以接受。", "完全停用流程。", "提醒使用者复杂案例要小心。", "设置识别条件和人工接管分支，记录失败案例后迭代规则。"]),
-  createQuestion("q12", 5, "workflow", "知识连接", "团队希望从制度文件中快速获得准确答复，你会如何设计？", ["让所有人各自向通用 AI 提问。", "把文件一次性复制到聊天窗口。", "整理非敏感文件后建立可查询资料集。", "建立可更新的授权知识库，并要求回答附带来源、版本和人工兜底。"]),
-  createQuestion("q13", 5, "workflow", "权限与更新", "接入企业资料到 AI 工具前，最关键的管理动作是？", ["先接入，出问题再处理。", "只考虑工具功能。", "询问是否需要密码。", "确认资料授权范围、访问角色、更新责任、保留期限和失效处理。"]),
-  createQuestion("q14", 5, "workflow", "协作闭环", "AI 生成的任务摘要要进入团队协作流程时，你会？", ["人工复制到群里。", "让 AI 自动推送全部内容。", "把摘要同步到协作工具。", "按字段、权限和审核规则把摘要写入协作工具，并能追溯来源和修改。"]),
-  createQuestion("q15", 6, "innovation", "应用搭建", "需要让同事自行生成标准化项目启动材料时，你会？", ["收集需求后自己代为提问。", "分享一个长提示词。", "制作一份填写说明。", "用低代码或可视化工具做成带输入表单、模板和输出校验的小应用。"]),
-  createQuestion("q16", 6, "innovation", "应用迭代", "AI 小应用上线后，使用者反馈结果偶尔不符合预期，你会？", ["认为使用者不会用。", "只改界面颜色。", "收集一两个例子再调整。", "按角色和失败类型记录样例，测试边界、提示、数据和体验后迭代版本。"]),
-  createQuestion("q17", 7, "innovation", "业务重构", "部门想用 AI 缩短从需求到交付的周期，最成熟的推进方式是？", ["给所有人开通工具。", "要求每个人每天使用一次。", "挑一个环节做效率测试。", "重画端到端流程，明确哪些环节由 AI 改变、哪些保留人工，并设定业务指标试点。"]),
-  createQuestion("q18", 7, "innovation", "成效运营", "AI 流程试点完成后，如何判断是否应该扩大？", ["领导觉得不错就扩大。", "看生成内容数量。", "比较参与者的主观感受。", "比较采用率、周期、质量、风险事件和成本等指标，再决定推广范围。"]),
-  createQuestion("q19", 8, "innovation", "标准沉淀", "组织内已出现多个有效 AI 实践，下一步最能形成持续能力的是？", ["让各团队自行保存经验。", "开一次分享会。", "收集案例做展示。", "建立案例、模板、标准、责任人和更新机制，使实践可检索、可复用。"]),
-  createQuestion("q20", 8, "innovation", "生态建设", "要让 AI 能力跨部门持续复制，你会？", ["依赖几个专家持续支援。", "持续购买更多工具。", "定期组织经验交流。", "建立平台、培训、治理标准、案例反馈和推广机制，并衡量组织影响。"])
+  createQuestion("q1", 1, "office", "任务启动", "回想最近一次需要快速起草工作文案，你实际怎样开始？", ["没有使用 AI，直接沿用旧材料或从头写。", "向常用 AI 输入一句任务要求，再边看边补充。", "先写清受众和交付物，再让 AI 生成一版。", "先确定验收样例、事实边界和输出格式，再提交任务。"]),
+  createQuestion("q2", 1, "office", "上下文表达", "最近一次让 AI 改写通知时，你给出的信息最接近哪一项？", ["只有原文，没有补充要求。", "原文加一句语气或风格要求。", "原文、接收对象和希望对方采取的行动。", "原文、对象、行动目标、不可改事实和合格样例。"]),
+  createQuestion("q3", 2, "office", "材料处理", "拿到会议整理稿并需要形成行动清单时，你最近一次怎么做？", ["自己从材料里逐条摘录，没有使用 AI。", "让 AI 直接总结，再按阅读感觉修改。", "先去除不应输入的信息，再让 AI 按事项和负责人整理。", "确认材料授权后按固定字段生成，并逐项回查原文证据。"]),
+  createQuestion("q4", 2, "office", "事实核验", "AI 草稿里包含日期、数字和引用时，你通常完成到哪一步？", ["内容通顺就直接进入下一环节。", "检查明显错误，但不回看原始材料。", "回查会影响结论的关键数字和日期。", "按来源逐项核验事实并标记无法确认的内容。"]),
+  createQuestion("q5", 2, "office", "迭代修正", "第一版输出不符合单位格式，你最近一次采取了什么动作？", ["改回人工完成，没有继续使用 AI。", "换一种相近说法重新提问。", "指出不符合之处并补充格式要求。", "提供合格样例和验收清单，比较迭代前后的偏差。"]),
+  createQuestion("q6", 3, "scenario", "场景识别", "团队每周手工整理客户反馈，你会从哪一步开始试用 AI？", ["直接用 AI 自动生成并发送客户回复。", "挑一批反馈让 AI 自由总结，看看效果。", "先让 AI 分类汇总，由业务人员复核后使用。", "先定义分类规则、风险边界和指标，再用代表性样本试点。"]),
+  createQuestion("q7", 3, "scenario", "价值判断", "上次判断一个 AI 场景是否值得继续时，你主要依据什么？", ["工具热度和其他团队是否在使用。", "生成结果看起来是否足够丰富。", "使用者是否感觉更省时间。", "基线数据、任务频率、质量变化、风险和投入成本。"]),
+  createQuestion("q8", 3, "scenario", "人机边界", "涉及对外承诺的内容由 AI 辅助时，你的实际流程最接近哪项？", ["由 AI 生成后自动发送，以减少等待。", "生成后由当时有空的同事快速看一眼。", "固定一名业务人员在发送前确认内容。", "预先定义审批责任、禁用信息和异常升级条件。"]),
+  createQuestion("q9", 4, "workflow", "流程拆解", "资料初审已经验证可由 AI 辅助，你接下来通常怎样沉淀？", ["保留个人聊天记录，下次再找相似对话。", "把有效提示词发到团队群供大家参考。", "记录主要步骤和输入要求，供自己重复使用。", "固化输入、处理、验收、责任人与异常分支。"]),
+  createQuestion("q10", 4, "workflow", "稳定复用", "同事按你的 AI 方法操作却得到不同结果，你会补上什么？", ["再口头演示一次，让同事照着操作。", "发送成功结果的截图作为参考。", "共享提示词、输入样例和操作步骤。", "补齐输入标准、验收样例、版本记录和责任人。"]),
+  createQuestion("q11", 4, "workflow", "异常处理", "AI 流程遇到少量复杂案例时表现不稳定，你最近会怎么处理？", ["仍按原流程执行，个别错误之后再修。", "先整体停用，等工具升级后再尝试。", "提醒使用者自行判断哪些案例较复杂。", "定义触发条件转人工，并把失败样例纳入回归检查。"]),
+  createQuestion("q12", 5, "workflow", "知识连接", "团队需要从制度文件中快速获得可信答复，你会搭到哪一步？", ["让成员各自在通用 AI 中搜索和提问。", "把当前文件复制进对话，回答完即结束。", "整理允许使用的文件，形成统一查询入口。", "建立带权限和版本的知识入口，回答附来源并可反馈纠错。"]),
+  createQuestion("q13", 5, "workflow", "权限治理", "接入企业资料前，你实际确认过哪些事项？", ["先接入使用，出现问题时再补规则。", "主要确认工具功能是否满足需求。", "确认账号权限和资料是否含敏感信息。", "确认授权范围、访问角色、更新人、保留期和退出方案。"]),
+  createQuestion("q14", 5, "workflow", "协作闭环", "AI 生成的任务摘要需要进入协作系统，你会如何落地？", ["人工复制到群里，由成员自行认领。", "把所有生成内容自动推送到协作系统。", "按固定模板同步摘要，再由负责人确认。", "按字段和权限写入，保留来源、审核状态和修改记录。"]),
+  createQuestion("q15", 6, "innovation", "应用交付", "多人需要反复生成同类项目材料时，你最近做到哪一步？", ["收集每个人的需求后，由自己代为提问。", "共享一段较完整的提示词让大家复制。", "提供输入表单和填写说明，再集中生成。", "交付带输入约束、模板、校验和失败提示的可访问应用。"]),
+  createQuestion("q16", 6, "innovation", "产品迭代", "AI 小应用出现偶发错误，你依据什么安排下一次迭代？", ["把问题归因于使用者操作，暂不调整。", "优先改善界面，让使用者更愿意尝试。", "收集几条失败反馈后修改提示词。", "按角色和失败类型建样本集，回归验证数据、规则与体验。"]),
+  createQuestion("q17", 7, "innovation", "业务重构", "部门希望缩短需求到交付周期，你实际会怎样启动 AI 改造？", ["先给全员开通工具，让各岗位自行探索。", "设置使用次数目标，推动大家形成习惯。", "选择耗时最长的一个环节进行效率试验。", "重画端到端流程，设定人机分工、风险边界和业务基线。"]),
+  createQuestion("q18", 7, "innovation", "成效运营", "一个 AI 流程试点结束后，你用什么证据决定是否扩大？", ["负责人认可试点结果就进入推广。", "比较试点前后的内容产出数量。", "汇总参与者的满意度和节时反馈。", "同时比较采用率、周期、质量、成本与风险事件。"]),
+  createQuestion("q19", 8, "innovation", "标准沉淀", "多个团队已有有效 AI 实践，你会优先沉淀什么？", ["让各团队继续按自己的方式保存经验。", "组织一次分享会，记录优秀做法。", "建立可检索的案例和模板目录。", "建立资产标准、负责人、复用反馈和版本淘汰机制。"]),
+  createQuestion("q20", 8, "innovation", "生态建设", "回看最近一次跨部门推广，你的组织机制做到哪一层？", ["依靠少数专家持续解决各部门问题。", "统一采购工具并提供基础账号支持。", "定期培训和交流案例，鼓励部门复用。", "联动平台、治理、课程、案例和成效指标持续运营。"])
 ];
+
+const questionHeaderPattern = /^##\s+([A-Za-z0-9_-]+)\s*\|\s*L([1-8])\s*\|\s*(office|scenario|workflow|innovation)\s*\|\s*(.+)$/;
+const optionPattern = /^-\s+\[([0-3])]\s+(.+)$/;
+
+export function serializeQuestionMarkdown(items: AssessmentQuestion[]): string {
+  const blocks = items.map((question) => [
+    `## ${question.id} | L${question.level} | ${question.dimension} | ${question.category}`,
+    `> ${question.prompt}`,
+    ...[...question.options]
+      .sort((left, right) => left.score - right.score)
+      .map((option) => `- [${option.score}] ${option.label}`)
+  ].join("\n"));
+  return ["# AI 能力测评题库", "", ...blocks].join("\n\n");
+}
+
+export const defaultQuestionMarkdown = serializeQuestionMarkdown(questions);
+
+export function parseQuestionMarkdown(markdown: string): AssessmentQuestion[] {
+  if (markdown.length > 1_000_000) throw new Error("题库文件不能超过 1 MB。");
+  const lines = markdown.replace(/^\uFEFF/, "").split(/\r?\n/);
+  const starts = lines.flatMap((line, index) => line.startsWith("## ") ? [index] : []);
+  if (starts.length < 8 || starts.length > 60) throw new Error("题库必须包含 8–60 道题，并覆盖 L1–L8。");
+
+  const parsed = starts.map((start, questionIndex) => {
+    const header = lines[start].match(questionHeaderPattern);
+    if (!header) throw new Error(`第 ${start + 1} 行题目标题格式错误。`);
+    const [, id, levelText, dimensionText, categoryText] = header;
+    const end = starts[questionIndex + 1] ?? lines.length;
+    const body = lines.slice(start + 1, end).filter((line) => line.trim());
+    const prompts = body.filter((line) => line.startsWith("> "));
+    if (prompts.length !== 1 || !prompts[0].slice(2).trim()) throw new Error(`${id} 必须有且只有一行以“> ”开头的题干。`);
+
+    const optionLines = body.filter((line) => line.startsWith("- "));
+    const options = optionLines.map((line) => {
+      const match = line.match(optionPattern);
+      if (!match) throw new Error(`${id} 的选项必须使用“- [0] 选项内容”格式。`);
+      const score = Number(match[1]) as 0 | 1 | 2 | 3;
+      return { id: `${id}-option-${score}`, score, label: match[2].trim() };
+    });
+    if (options.length !== 4 || new Set(options.map((option) => option.score)).size !== 4) throw new Error(`${id} 必须各有一个 0、1、2、3 分选项。`);
+
+    return {
+      id,
+      level: Number(levelText),
+      dimension: dimensionText as AbilityDimension,
+      category: categoryText.trim(),
+      prompt: prompts[0].slice(2).trim(),
+      options
+    };
+  });
+
+  if (new Set(parsed.map((question) => question.id)).size !== parsed.length) throw new Error("题目 ID 不能重复。");
+  const levels = new Set(parsed.map((question) => question.level));
+  if (Array.from({ length: 8 }, (_, index) => index + 1).some((level) => !levels.has(level))) throw new Error("题库必须覆盖 L1–L8 每个等级。");
+  const dimensions = new Set(parsed.map((question) => question.dimension));
+  if ((["office", "scenario", "workflow", "innovation"] as AbilityDimension[]).some((dimension) => !dimensions.has(dimension))) throw new Error("题库必须覆盖四个能力维度。");
+  return parsed;
+}
 
 export function getGrade(level: number): Grade {
   return grades.find((grade) => grade.level === level) ?? grades[0];

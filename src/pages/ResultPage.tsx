@@ -12,6 +12,7 @@ export default function ResultPage() {
   const { token } = useParams();
   const participant = useMemo(() => (token ? assessmentRepository.getParticipantByToken(token) : undefined), [token]);
   if (!participant) return <Navigate to="/" replace />;
+  if (!token || !sessionStorage.getItem(`assessment-identity:${token}`)) return <Navigate to={`/assessment/${participant.token}`} replace />;
   const result = assessmentRepository.getResult(participant.id);
   if (!result) return <Navigate to={`/assessment/${participant.token}`} replace />;
 

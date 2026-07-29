@@ -11,6 +11,11 @@ const answers = Object.fromEntries(
 describe("assessment repository", () => {
   beforeEach(() => localStorage.clear());
 
+  it("starts with no test campaigns or participants", () => {
+    const repository = createAssessmentRepository("empty-production-test");
+    expect(repository.listCampaigns()).toEqual([]);
+  });
+
   it("imports valid roster rows and reports duplicates without storing them", () => {
     const repository = createAssessmentRepository("import-test");
     const campaign = repository.createCampaign({ name: "2026 年 AI 能力测评" });
@@ -37,8 +42,24 @@ describe("assessment repository", () => {
     expect(repository.getDraft(participant.id)).toEqual({ q1: "q1-option-2" });
 
     const result = repository.submitAssessment(participant.id, answers, 600);
-    expect(result.level).toBe(8);
-    expect(repository.getResult(participant.id)?.level).toBe(8);
+    expect(result.level).toBe(5);
+    expect(repository.getResult(participant.id)?.level).toBe(5);
     expect(() => repository.submitAssessment(participant.id, answers, 600)).toThrow("该员工已完成本批次测评");
+  });
+
+  it("finds one person by name and rejects missing or ambiguous names", () => {
+    const repository = createAssessmentRepository("identity-test");
+    const campaign = repository.createCampaign({ name: "身份测试" });
+    const [participant] = repository.importParticipants(campaign.id, [
+      { name: "王小明", department: "技术部", position: "工程师" },
+      { name: "李明", department: "技术部", position: "工程师" },
+      { name: "李明", department: "运营部", position: "主管" }
+    ]).imported;
+
+    expect(repository.findParticipantByName("其他人")).toBeUndefined();
+    expect(repository.findParticipantByName("李明")).toBeUndefined();
+    expect(repository.getParticipant(participant.id)?.visitedAt).toBeUndefined();
+    expect(repository.findParticipantByName("  王小明  ")?.id).toBe(participant.id);
+    expect(repository.getParticipant(participant.id)?.visitedAt).toBeTruthy();
   });
 });

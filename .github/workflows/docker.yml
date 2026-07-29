@@ -109,12 +109,13 @@ jobs:
           APP_PORT: ${{ env.APP_PORT }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
-          envs: IMAGE_NAME,CONTAINER_NAME,APP_PORT,GHCR_USERNAME,GHCR_TOKEN
+          envs: IMAGE_NAME,CONTAINER_NAME,APP_PORT,GHCR_USERNAME,GHCR_TOKEN,ADMIN_PASSWORD
           script_stop: true
           script: |
             set -eu
@@ -126,9 +127,11 @@ jobs:
             docker run -d \
               --name "$CONTAINER_NAME" \
               --restart unless-stopped \
-              --health-cmd='wget --no-verbose --tries=1 --spider http://127.0.0.1/healthz || exit 1' \
+              --health-cmd='wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/healthz || exit 1' \
               --health-interval=30s \
               --health-timeout=5s \
               --health-retries=3 \
-              -p "${APP_PORT}:80" \
+              -e ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin123}" \
+              -v ai-power-test-data:/app/data \
+              -p "${APP_PORT}:3000" \
               "$IMAGE_NAME:latest"

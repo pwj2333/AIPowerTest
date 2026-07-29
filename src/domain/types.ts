@@ -33,6 +33,9 @@ export interface Grade {
 export interface AssessmentResult {
   level: number;
   grade: Grade;
+  totalScore: number;
+  maxScore: number;
+  scorePercent: number;
   levelAverages: Record<number, number>;
   dimensionScores: Record<AbilityDimension, number>;
   weakDimensions: AbilityDimension[];

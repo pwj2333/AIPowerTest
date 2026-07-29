@@ -20,14 +20,19 @@ Add these secrets in **Settings > Secrets and variables > Actions**:
 | `DEPLOY_PORT` | optional | SSH port; defaults to `22` |
 | `GHCR_USERNAME` | for private image | GitHub username used by the server to log in to GHCR |
 | `GHCR_TOKEN` | for private image | Fine-grained PAT with package read access |
+| `ADMIN_PASSWORD` | recommended | Administrator password; defaults to `admin123` when omitted |
 
 `GHCR_USERNAME` and `GHCR_TOKEN` can be omitted when the image is public. For a private package, create a read-only PAT and configure both values.
 
 ## Server prerequisites
 
-Install Docker and make sure the deploy user can run `docker` without `sudo`. Open the application port (default `80`) and the SSH port in the firewall. The action replaces a container named `ai-power-test` and maps host port `80` to container port `80`.
+Install Docker and make sure the deploy user can run `docker` without `sudo`. Open the application port (default `80`) and the SSH port in the firewall. The action replaces a container named `ai-power-test`, maps host port `80` to container port `3000`, and mounts the named volume `ai-power-test-data` at `/app/data`.
 
 To use another host port, change `APP_PORT` in the workflow before pushing.
+
+Application data is stored in `/app/data/assessment.json`. Back up the `ai-power-test-data` volume regularly. Do not remove that volume during deployment and do not run multiple containers against the same JSON file.
+
+Set `ADMIN_PASSWORD` before exposing the application. The built-in default is intended only for the first local login.
 
 ## Local checks
 
@@ -36,6 +41,6 @@ npm ci
 npm run test:run
 npm run build
 docker build -t ai-power-test:local .
-docker run --rm -p 8080:80 ai-power-test:local
+docker run --rm -p 8080:3000 -e ADMIN_PASSWORD='replace-this-password' -v ai-power-test-data:/app/data ai-power-test:local
 ```
 
