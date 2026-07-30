@@ -75,6 +75,7 @@ interface AssessmentStatePatch {
 }
 
 const defaultStorageKey = "ai-capability-assessment-v2";
+const currentQuestionBankVersion = "v2.0";
 const memoryStorage = new Map<string, string>();
 
 function makeId(prefix: string): string {
@@ -82,7 +83,7 @@ function makeId(prefix: string): string {
 }
 
 function initialQuestionBank(): StoredQuestionBank {
-  return { version: "v1.0", markdown: defaultQuestionMarkdown, updatedAt: new Date().toISOString() };
+  return { version: currentQuestionBankVersion, markdown: defaultQuestionMarkdown, updatedAt: new Date().toISOString() };
 }
 
 function emptyState(): AssessmentState {
@@ -97,10 +98,17 @@ function normalizeState(stored: Partial<AssessmentState>): AssessmentState {
     results: Array.isArray(stored.results) ? stored.results : [],
     questionBank: stored.questionBank ?? initialQuestionBank()
   };
+  const useDefaultQuestionBank = () => {
+    state.questionBank = initialQuestionBank();
+    state.campaigns = state.campaigns.map((campaign) => campaign.status === "open"
+      ? { ...campaign, questionVersion: state.questionBank.version }
+      : campaign);
+  };
+  if (state.questionBank.version === "v1.0") useDefaultQuestionBank();
   try {
     parseQuestionMarkdown(state.questionBank.markdown);
   } catch {
-    state.questionBank = initialQuestionBank();
+    useDefaultQuestionBank();
   }
   return state;
 }
@@ -353,8 +361,10 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
     saveQuestionBank(markdown) {
       const parsedQuestions = parseQuestionMarkdown(markdown);
       const state = read();
-      const revision = Number(state.questionBank.version.split(".")[1] ?? 0) + 1;
-      state.questionBank = { version: `v1.${revision}`, markdown, updatedAt: new Date().toISOString() };
+      const versionMatch = state.questionBank.version.match(/^v(\d+)\.(\d+)$/);
+      const major = versionMatch?.[1] ?? "2";
+      const revision = Number(versionMatch?.[2] ?? 0) + 1;
+      state.questionBank = { version: `v${major}.${revision}`, markdown, updatedAt: new Date().toISOString() };
       state.campaigns.filter((campaign) => campaign.status === "open").forEach((campaign) => { campaign.questionVersion = state.questionBank.version; });
       write(state);
       return { ...state.questionBank, questions: parsedQuestions };

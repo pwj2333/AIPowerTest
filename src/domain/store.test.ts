@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { defaultQuestionMarkdown } from "./questions";
 import { createAssessmentRepository } from "./store";
 
 const answers = Object.fromEntries(
@@ -14,6 +15,22 @@ describe("assessment repository", () => {
   it("starts with no test campaigns or participants", () => {
     const repository = createAssessmentRepository("empty-production-test");
     expect(repository.listCampaigns()).toEqual([]);
+  });
+
+  it("migrates the previous default question bank to the refreshed version", () => {
+    localStorage.setItem("question-bank-migration-test", JSON.stringify({
+      campaigns: [{ id: "campaign-1", status: "open", questionVersion: "v1.0" }],
+      participants: [],
+      drafts: {},
+      results: [],
+      questionBank: { version: "v1.0", markdown: defaultQuestionMarkdown, updatedAt: "2026-01-01T00:00:00.000Z" }
+    }));
+    const repository = createAssessmentRepository("question-bank-migration-test");
+
+    expect(repository.getQuestionBank().version).toBe("v2.0");
+    expect(repository.getQuestionBank().questions[0].prompt).toContain("会议通知");
+    expect(repository.listCampaigns()[0].questionVersion).toBe("v2.0");
+    expect(repository.saveQuestionBank(defaultQuestionMarkdown).version).toBe("v2.1");
   });
 
   it("imports valid roster rows and reports duplicates without storing them", () => {
