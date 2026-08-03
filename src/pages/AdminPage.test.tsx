@@ -83,4 +83,37 @@ describe("administrator workspace", () => {
     expect(await screen.findByText("还没有测评批次")).toBeInTheDocument();
     expect(assessmentRepository.getCampaign(campaign.id)).toBeUndefined();
   });
+
+  it("selects a campaign and exports filtered results", () => {
+    const first = assessmentRepository.createCampaign({ name: "First" });
+    const second = assessmentRepository.createCampaign({ name: "Second" });
+    const [person] = assessmentRepository.importParticipants(second.id, [{ name: "Alice", department: "Sales", position: "Lead" }]).imported;
+    const answers = Object.fromEntries(assessmentRepository.getQuestionBank().questions.map((question) => [question.id, question.options[0].id]));
+    assessmentRepository.submitAssessment(person.id, answers, 60);
+
+    render(
+      <MemoryRouter initialEntries={["/admin/results"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("结果测评批次")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("结果测评批次"), { target: { value: first.id } });
+    expect(screen.getByRole("button", { name: "导出筛选结果 CSV" })).toBeInTheDocument();
+  });
+
+  it("offers roster, personal result, and department summary exports", () => {
+    const campaign = assessmentRepository.createCampaign({ name: "Export" });
+    assessmentRepository.importParticipants(campaign.id, [{ name: "Alice", department: "Sales", position: "Lead" }]);
+    render(
+      <MemoryRouter initialEntries={["/admin/exports"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("导出测评批次")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出人员 CSV" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出个人结果 CSV" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出部门汇总 CSV" })).toBeInTheDocument();
+  });
 });
