@@ -79,4 +79,38 @@ describe("assessment repository", () => {
     expect(repository.findParticipantByName("  王小明  ")?.id).toBe(participant.id);
     expect(repository.getParticipant(participant.id)?.visitedAt).toBeTruthy();
   });
+
+  it("copies people to another campaign and skips existing identities", () => {
+    const repository = createAssessmentRepository("copy-test");
+    const source = repository.createCampaign({ name: "source" });
+    const target = repository.createCampaign({ name: "target" });
+    repository.importParticipants(source.id, [
+      { name: "Alice", department: "Sales", position: "Lead" },
+      { name: "Bob", department: "Sales", position: "Rep" },
+    ]);
+    repository.importParticipants(target.id, [{ name: "Alice", department: "Sales", position: "Old" }]);
+
+    const report = repository.copyParticipants(source.id, target.id);
+
+    expect(report.imported.map((person) => person.name)).toEqual(["Bob"]);
+    expect(report.skipped).toEqual([{ name: "Alice", department: "Sales" }]);
+  });
+
+  it("archives, recovers, and permanently deletes a campaign with its data", () => {
+    const repository = createAssessmentRepository("delete-test");
+    const campaign = repository.createCampaign({ name: "to delete" });
+    const [person] = repository.importParticipants(campaign.id, [
+      { name: "Alice", department: "Sales", position: "Lead" },
+    ]).imported;
+
+    repository.saveDraft(person.id, { q1: "q1-option-1" });
+    expect(repository.setCampaignStatus(campaign.id, "archived").status).toBe("archived");
+    expect(repository.setCampaignStatus(campaign.id, "open").status).toBe("open");
+
+    repository.deleteCampaign(campaign.id);
+
+    expect(repository.getCampaign(campaign.id)).toBeUndefined();
+    expect(repository.getParticipant(person.id)).toBeUndefined();
+    expect(repository.getDraft(person.id)).toEqual({});
+  });
 });

@@ -72,6 +72,12 @@ interface AssessmentStatePatch {
   drafts?: Record<string, AnswerMap | null>;
   results?: StoredResult[];
   questionBank?: StoredQuestionBank;
+  remove?: {
+    campaigns?: string[];
+    participants?: string[];
+    drafts?: string[];
+    results?: string[];
+  };
 }
 
 const defaultStorageKey = "ai-capability-assessment-v2";
@@ -141,12 +147,19 @@ function createStatePatch(previous: AssessmentState, next: AssessmentState): Ass
   const drafts = Object.fromEntries([...new Set([...Object.keys(previous.drafts), ...Object.keys(next.drafts)])]
     .filter((id) => JSON.stringify(previous.drafts[id]) !== JSON.stringify(next.drafts[id]))
     .map((id) => [id, next.drafts[id] ?? null]));
+  const remove = {
+    campaigns: previous.campaigns.filter((item) => !next.campaigns.some((candidate) => candidate.id === item.id)).map((item) => item.id),
+    participants: previous.participants.filter((item) => !next.participants.some((candidate) => candidate.id === item.id)).map((item) => item.id),
+    drafts: Object.keys(previous.drafts).filter((id) => !(id in next.drafts)),
+    results: previous.results.filter((item) => !next.results.some((candidate) => candidate.participantId === item.participantId)).map((item) => item.participantId)
+  };
   return {
     ...(campaigns.length ? { campaigns } : {}),
     ...(participants.length ? { participants } : {}),
     ...(Object.keys(drafts).length ? { drafts } : {}),
     ...(results.length ? { results } : {}),
-    ...(JSON.stringify(previous.questionBank) !== JSON.stringify(next.questionBank) ? { questionBank: next.questionBank } : {})
+    ...(JSON.stringify(previous.questionBank) !== JSON.stringify(next.questionBank) ? { questionBank: next.questionBank } : {}),
+    ...(Object.values(remove).some((ids) => ids.length) ? { remove } : {})
   };
 }
 
@@ -162,7 +175,12 @@ export interface AssessmentRepository {
   listCampaigns(): AssessmentCampaign[];
   getCampaign(campaignId: string): AssessmentCampaign | undefined;
   setCampaignStatus(campaignId: string, status: CampaignStatus): AssessmentCampaign;
+  deleteCampaign(campaignId: string): AssessmentCampaign;
   importParticipants(campaignId: string, rows: RosterRow[]): ImportReport;
+  copyParticipants(sourceCampaignId: string, targetCampaignId: string): {
+    imported: Participant[];
+    skipped: Array<Pick<RosterRow, "name" | "department">>;
+  };
   listParticipants(campaignId: string): Participant[];
   getParticipant(participantId: string): Participant | undefined;
   getParticipantByToken(token: string): Participant | undefined;
@@ -279,6 +297,18 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
       return campaign;
     },
 
+    deleteCampaign(campaignId) {
+      const state = read();
+      const campaign = requireCampaign(state, campaignId);
+      const participantIds = new Set(state.participants.filter((person) => person.campaignId === campaignId).map((person) => person.id));
+      state.campaigns = state.campaigns.filter((item) => item.id !== campaignId);
+      state.participants = state.participants.filter((person) => person.campaignId !== campaignId);
+      state.results = state.results.filter((item) => item.campaignId !== campaignId && !participantIds.has(item.participantId));
+      participantIds.forEach((participantId) => { delete state.drafts[participantId]; });
+      write(state);
+      return campaign;
+    },
+
     importParticipants(campaignId, rows) {
       const state = read();
       requireCampaign(state, campaignId);
@@ -315,6 +345,40 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
       });
       write(state);
       return { imported, errors };
+    },
+
+    copyParticipants(sourceCampaignId, targetCampaignId) {
+      const state = read();
+      requireCampaign(state, sourceCampaignId);
+      requireCampaign(state, targetCampaignId);
+      if (sourceCampaignId === targetCampaignId) throw new Error("源批次和目标批次不能相同");
+      const identities = new Set(state.participants
+        .filter((person) => person.campaignId === targetCampaignId)
+        .map((person) => `${person.name}|${person.department}`));
+      const imported: Participant[] = [];
+      const skipped: Array<Pick<RosterRow, "name" | "department">> = [];
+      state.participants
+        .filter((person) => person.campaignId === sourceCampaignId)
+        .forEach((sourcePerson) => {
+          const identity = `${sourcePerson.name}|${sourcePerson.department}`;
+          if (identities.has(identity)) {
+            skipped.push({ name: sourcePerson.name, department: sourcePerson.department });
+            return;
+          }
+          identities.add(identity);
+          const participant: Participant = {
+            id: makeId("participant"),
+            campaignId: targetCampaignId,
+            name: sourcePerson.name,
+            department: sourcePerson.department,
+            position: sourcePerson.position,
+            token: makeId("invite")
+          };
+          state.participants.push(participant);
+          imported.push(participant);
+        });
+      write(state);
+      return { imported, skipped };
     },
 
     listParticipants(campaignId) {
