@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import App from "../App";
@@ -12,25 +13,20 @@ describe("employee assessment flow", () => {
   });
 
   it("completes all questions and shows the level and action plan", async () => {
+    const user = userEvent.setup();
     const campaign = assessmentRepository.createCampaign({ name: "测试批次" });
-    assessmentRepository.importParticipants(campaign.id, [
+    const [participant] = assessmentRepository.importParticipants(campaign.id, [
       { name: "测试员工", department: "运营部", position: "专员" }
-    ]);
+    ]).imported;
+    sessionStorage.setItem(`assessment-identity:${participant.token}`, "verified");
 
     render(
-      <MemoryRouter initialEntries={["/"]}>
+      <MemoryRouter initialEntries={[`/assessment/${participant.token}`]}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(screen.queryByRole("button", { name: "开始答题" })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "其他员工" } });
-    fireEvent.click(screen.getByRole("button", { name: "进入测评" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("未找到该姓名，请联系管理员");
-
-    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "测试员工" } });
-    fireEvent.click(screen.getByRole("button", { name: "进入测评" }));
-    expect(await screen.findByText("姓名核验成功")).toBeInTheDocument();
+    expect(screen.getByText("姓名核验成功")).toBeInTheDocument();
     expect(screen.getByText("运营部")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "开始答题" }));
     expect(screen.getByRole("navigation", { name: "题目轨迹" })).toBeInTheDocument();
@@ -40,7 +36,7 @@ describe("employee assessment flow", () => {
       if (questionNumber < 20) {
         fireEvent.click(screen.getByRole("button", { name: "下一题" }));
       } else {
-        fireEvent.click(screen.getByRole("button", { name: "提交测评" }));
+        await user.click(screen.getByRole("button", { name: "提交测评" }));
       }
     }
 

@@ -74,8 +74,36 @@ export const grades: Grade[] = [
   }
 ];
 
-const makeOptions = (questionId: string, labels: [string, string, string, string]) =>
-  labels.map((label, score) => ({ id: `${questionId}-option-${score}`, label, score: score as 0 | 1 | 2 | 3 }));
+type Score = 0 | 1 | 2 | 3;
+type ScoreOrder = readonly [Score, Score, Score, Score];
+
+const optionScoreOrders: Record<string, ScoreOrder> = {
+  q1: [2, 0, 3, 1],
+  q2: [1, 3, 0, 2],
+  q3: [3, 1, 2, 0],
+  q4: [0, 2, 1, 3],
+  q5: [2, 0, 1, 3],
+  q6: [1, 3, 2, 0],
+  q7: [0, 2, 3, 1],
+  q8: [3, 1, 0, 2],
+  q9: [2, 3, 0, 1],
+  q10: [1, 0, 3, 2],
+  q11: [3, 0, 2, 1],
+  q12: [0, 3, 1, 2],
+  q13: [2, 1, 3, 0],
+  q14: [1, 2, 0, 3],
+  q15: [3, 0, 2, 1],
+  q16: [2, 1, 0, 3],
+  q17: [0, 3, 2, 1],
+  q18: [1, 0, 3, 2],
+  q19: [2, 3, 1, 0],
+  q20: [3, 1, 0, 2]
+};
+
+const makeOptions = (questionId: string, labels: [string, string, string, string]) => {
+  const options = labels.map((label, score) => ({ id: `${questionId}-option-${score}`, label, score: score as Score }));
+  return optionScoreOrders[questionId].map((score) => options[score]);
+};
 
 const createQuestion = (
   id: string,
@@ -132,9 +160,7 @@ export function serializeQuestionMarkdown(items: AssessmentQuestion[]): string {
   const blocks = items.map((question) => [
     `## ${question.id} | L${question.level} | ${question.dimension} | ${question.category}`,
     `> ${question.prompt}`,
-    ...[...question.options]
-      .sort((left, right) => left.score - right.score)
-      .map((option) => `- [${option.score}] ${option.label}`)
+    ...question.options.map((option) => `- [${option.score}] ${option.label}`)
   ].join("\n"));
   return ["# AI 能力测评题库", "", ...blocks].join("\n\n");
 }
@@ -164,6 +190,8 @@ export function parseQuestionMarkdown(markdown: string): AssessmentQuestion[] {
       return { id: `${id}-option-${score}`, score, label: match[2].trim() };
     });
     if (options.length !== 4 || new Set(options.map((option) => option.score)).size !== 4) throw new Error(`${id} 必须各有一个 0、1、2、3 分选项。`);
+    const visibleScoreOrder = options.map((option) => option.score).join("");
+    if (visibleScoreOrder === "0123" || visibleScoreOrder === "3210") throw new Error(`${id} 的分值顺序过于明显，请打乱四个选项的位置。`);
 
     const parsedQuestion = {
       id,
@@ -182,6 +210,8 @@ export function parseQuestionMarkdown(markdown: string): AssessmentQuestion[] {
   if (Array.from({ length: 8 }, (_, index) => index + 1).some((level) => !levels.has(level))) throw new Error("题库必须覆盖 L1–L8 每个等级。");
   const dimensions = new Set(parsed.map((question) => question.dimension));
   if ((["office", "scenario", "workflow", "innovation"] as AbilityDimension[]).some((dimension) => !dimensions.has(dimension))) throw new Error("题库必须覆盖四个能力维度。");
+  const scoreOrders = new Set(parsed.map((question) => question.options.map((option) => option.score).join("")));
+  if (scoreOrders.size < Math.min(4, parsed.length)) throw new Error("题库的分值位置过于固定，请至少使用四种不同排列。");
   return parsed;
 }
 
