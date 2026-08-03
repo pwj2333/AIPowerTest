@@ -1,0 +1,57 @@
+import { describe, expect, it } from "vitest";
+import type { Participant, StoredResult } from "./store";
+import { buildDepartmentSummaryCsv, buildResultsCsv, buildRosterCsv, toCsv } from "./exports";
+
+const alice: Participant = {
+  id: "p1",
+  campaignId: "c1",
+  name: "Alice",
+  department: "Sales",
+  position: "Lead",
+  token: "invite-1",
+  completedAt: "2026-08-04T08:00:00.000Z"
+};
+
+const bob: Participant = {
+  id: "p2",
+  campaignId: "c1",
+  name: "Bob",
+  department: "Sales",
+  position: "Rep",
+  token: "invite-2"
+};
+
+const aliceResult: StoredResult = {
+  participantId: "p1",
+  campaignId: "c1",
+  answers: {},
+  elapsedSeconds: 60,
+  result: {
+    level: 3,
+    grade: { level: 3, code: "L3", name: "Level 3", capability: "capability", color: "#000", tasks: [] },
+    totalScore: 30,
+    maxScore: 60,
+    scorePercent: 50,
+    levelAverages: {},
+    dimensionScores: { office: 1, scenario: 1, workflow: 1, innovation: 1 },
+    weakDimensions: ["office"],
+    confidence: "high",
+    reviewRequired: false,
+    completedAt: "2026-08-04T08:00:00.000Z"
+  }
+};
+
+describe("csv exports", () => {
+  it("escapes commas, quotes, newlines, and empty values", () => {
+    expect(toCsv([["Name", "Notes"], ["Alice, Inc.", "said \"hello\"\nnext"], [null, undefined]])).toBe(
+      '"Name","Notes"\r\n"Alice, Inc.","said ""hello""\nnext"\r\n"",""',
+    );
+  });
+
+  it("builds roster, result, and department summary exports", () => {
+    expect(buildRosterCsv([alice, bob], [aliceResult])).toContain('"Alice","Sales","Lead","已完成"');
+    expect(buildRosterCsv([alice, bob], [aliceResult])).toContain('"Bob","Sales","Rep","待开始"');
+    expect(buildResultsCsv([alice, bob], [aliceResult])).toContain('"Alice","Sales","Lead","L3","Level 3","高"');
+    expect(buildDepartmentSummaryCsv([alice, bob], [aliceResult])).toContain('"Sales","2","1","3.0"');
+  });
+});
