@@ -37,33 +37,50 @@ function mergeByKey(current, updates, key) {
   return merged;
 }
 
+function removalSet(remove, key) {
+  if (remove === undefined) return new Set();
+  if (!remove || typeof remove !== "object" || Array.isArray(remove)) throw new Error("删除补丁格式无效");
+  const ids = remove[key];
+  if (ids === undefined) return new Set();
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string" || !id)) throw new Error("删除补丁包含无效 ID");
+  return new Set(ids);
+}
+
 export function mergeStatePatch(currentValue, patch) {
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new Error("数据补丁格式无效");
   const current = normalizeState(currentValue);
   const next = { ...current };
+  const removedCampaigns = removalSet(patch.remove, "campaigns");
+  const removedParticipants = removalSet(patch.remove, "participants");
+  const removedDrafts = removalSet(patch.remove, "drafts");
+  const removedResults = removalSet(patch.remove, "results");
+  next.campaigns = current.campaigns.filter((campaign) => !removedCampaigns.has(campaign.id));
+  next.participants = current.participants.filter((participant) => !removedParticipants.has(participant.id));
+  next.results = current.results.filter((result) => !removedResults.has(result.participantId));
+  next.drafts = { ...current.drafts };
+  removedDrafts.forEach((participantId) => delete next.drafts[participantId]);
   if (patch.campaigns !== undefined) {
     if (!Array.isArray(patch.campaigns)) throw new Error("批次数据格式无效");
-    next.campaigns = mergeByKey(current.campaigns, patch.campaigns, "id");
+    next.campaigns = mergeByKey(next.campaigns, patch.campaigns, "id");
   }
   if (patch.participants !== undefined) {
     if (!Array.isArray(patch.participants)) throw new Error("人员数据格式无效");
-    next.participants = mergeByKey(current.participants, patch.participants, "id");
+    next.participants = mergeByKey(next.participants, patch.participants, "id");
   }
   if (patch.results !== undefined) {
     if (!Array.isArray(patch.results)) throw new Error("答卷数据格式无效");
     for (const result of patch.results) {
-      const existing = current.results.find((item) => item.participantId === result?.participantId);
+      const existing = next.results.find((item) => item.participantId === result?.participantId);
       if (existing && JSON.stringify(existing) !== JSON.stringify(result)) {
         const error = new Error("该员工的答卷已经提交");
         error.statusCode = 409;
         throw error;
       }
     }
-    next.results = mergeByKey(current.results, patch.results, "participantId");
+    next.results = mergeByKey(next.results, patch.results, "participantId");
   }
   if (patch.drafts !== undefined) {
     if (!patch.drafts || typeof patch.drafts !== "object" || Array.isArray(patch.drafts)) throw new Error("草稿数据格式无效");
-    next.drafts = { ...current.drafts };
     for (const [participantId, answers] of Object.entries(patch.drafts)) {
       if (answers === null) delete next.drafts[participantId];
       else if (!next.results.some((item) => item.participantId === participantId)) next.drafts[participantId] = answers;
@@ -118,6 +135,8 @@ function adminCookie(request, token, maxAge) {
 }
 
 function patchRequiresAdmin(state, patch) {
+  if (patch.remove && typeof patch.remove === "object" && !Array.isArray(patch.remove)
+    && Object.values(patch.remove).some((ids) => Array.isArray(ids) && ids.length > 0)) return true;
   if (patch.campaigns !== undefined || patch.questionBank !== undefined) return true;
   if (!Array.isArray(patch.participants)) return false;
   return patch.participants.some((update) => {
