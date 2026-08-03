@@ -31,6 +31,12 @@ describe("employee assessment flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "开始答题" }));
     expect(screen.getByRole("navigation", { name: "题目轨迹" })).toBeInTheDocument();
 
+    const firstQuestionOrder = screen.getAllByRole("radio").map((option) => option.getAttribute("data-testid"));
+    fireEvent.click(screen.getByTestId("option-3"));
+    fireEvent.click(screen.getByRole("button", { name: "下一题" }));
+    fireEvent.click(screen.getByRole("button", { name: "上一题" }));
+    expect(screen.getAllByRole("radio").map((option) => option.getAttribute("data-testid"))).toEqual(firstQuestionOrder);
+
     for (let questionNumber = 1; questionNumber <= 20; questionNumber += 1) {
       fireEvent.click(screen.getByTestId("option-3"));
       if (questionNumber < 20) {

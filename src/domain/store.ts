@@ -75,7 +75,7 @@ interface AssessmentStatePatch {
 }
 
 const defaultStorageKey = "ai-capability-assessment-v2";
-const currentQuestionBankVersion = "v2.0";
+const currentQuestionBankVersion = "v2.1";
 const memoryStorage = new Map<string, string>();
 
 function makeId(prefix: string): string {

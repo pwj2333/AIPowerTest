@@ -27,10 +27,10 @@ describe("assessment repository", () => {
     }));
     const repository = createAssessmentRepository("question-bank-migration-test");
 
-    expect(repository.getQuestionBank().version).toBe("v2.0");
+    expect(repository.getQuestionBank().version).toBe("v2.1");
     expect(repository.getQuestionBank().questions[0].prompt).toContain("会议通知");
-    expect(repository.listCampaigns()[0].questionVersion).toBe("v2.0");
-    expect(repository.saveQuestionBank(defaultQuestionMarkdown).version).toBe("v2.1");
+    expect(repository.listCampaigns()[0].questionVersion).toBe("v2.1");
+    expect(repository.saveQuestionBank(defaultQuestionMarkdown).version).toBe("v2.2");
   });
 
   it("imports valid roster rows and reports duplicates without storing them", () => {

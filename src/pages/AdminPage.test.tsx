@@ -38,9 +38,9 @@ describe("administrator workspace", () => {
     );
 
     const editor = screen.getByLabelText("Markdown 题库内容");
-    fireEvent.change(editor, { target: { value: (editor as HTMLTextAreaElement).value.replace("你要用 AI 起草一封会议通知", "你要用 AI 起草一封正式会议通知") } });
+    fireEvent.change(editor, { target: { value: (editor as HTMLTextAreaElement).value.replace("你要写会议通知", "你要写正式会议通知") } });
     fireEvent.click(screen.getByRole("button", { name: "保存新版本" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("已保存 v2.1");
+    expect(await screen.findByRole("status")).toHaveTextContent("已保存 v2.2");
     expect(assessmentRepository.getQuestionBank().questions[0].prompt).toContain("正式会议通知");
   });
 });
