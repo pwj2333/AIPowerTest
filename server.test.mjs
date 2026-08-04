@@ -90,6 +90,69 @@ test("requires admin authentication for removal patches", async () => {
   }
 });
 
+test("permits a rostered participant session to submit without administrator authentication", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ai-assessment-participant-submit-"));
+  const dataFile = join(directory, "assessment.json");
+  await writeStateFile(dataFile, {
+    campaigns: [{ id: "c1", status: "open" }],
+    participants: [
+      { id: "p1", campaignId: "c1", name: "Alice", department: "Operations", position: "Specialist", token: "invite-p1" },
+      { id: "p2", campaignId: "c1", name: "Bob", department: "Operations", position: "Specialist", token: "invite-p2" }
+    ],
+    drafts: { p1: { q1: "q1-option-1" } },
+    results: []
+  });
+  const server = startServer({ port: 0, host: "127.0.0.1", dataFile, adminPassword: "submit-password" });
+  try {
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const submissionPatch = {
+      participants: [{ id: "p1", completedAt: "2026-08-04T00:00:00.000Z" }],
+      drafts: { p1: null },
+      results: [{ participantId: "p1", campaignId: "c1", answers: { q1: "q1-option-1" } }],
+      remove: { drafts: ["p1"] }
+    };
+    let response = await fetch(`http://127.0.0.1:${address.port}/api/state`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submissionPatch)
+    });
+    assert.equal(response.status, 401);
+
+    response = await fetch(`http://127.0.0.1:${address.port}/api/participant/session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "invite-p1", name: "Alice" })
+    });
+    assert.equal(response.status, 200);
+    const cookie = response.headers.get("set-cookie")?.split(";", 1)[0];
+    assert.ok(cookie);
+
+    response = await fetch(`http://127.0.0.1:${address.port}/api/state`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(submissionPatch)
+    });
+
+    assert.equal(response.status, 200);
+    const state = await response.json();
+    assert.equal(state.participants[0].completedAt, "2026-08-04T00:00:00.000Z");
+    assert.equal(state.results[0].participantId, "p1");
+    assert.equal(state.drafts.p1, undefined);
+
+    response = await fetch(`http://127.0.0.1:${address.port}/api/state`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ drafts: { p2: { q1: "q1-option-2" } }, remove: { drafts: ["p2"] } })
+    });
+    assert.equal(response.status, 401);
+  } finally {
+    await new Promise((resolveClose) => server.close(resolveClose));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("restores API data after a server restart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ai-assessment-api-"));
   const dataFile = join(directory, "assessment.json");

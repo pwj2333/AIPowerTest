@@ -77,6 +77,8 @@ describe("assessment repository", () => {
     expect(repository.findParticipantByName("李明")).toBeUndefined();
     expect(repository.getParticipant(participant.id)?.visitedAt).toBeUndefined();
     expect(repository.findParticipantByName("  王小明  ")?.id).toBe(participant.id);
+    expect(repository.getParticipant(participant.id)?.visitedAt).toBeUndefined();
+    repository.verifyParticipantName(participant.token, "  王小明  ");
     expect(repository.getParticipant(participant.id)?.visitedAt).toBeTruthy();
   });
 

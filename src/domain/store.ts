@@ -185,6 +185,7 @@ export interface AssessmentRepository {
   getParticipant(participantId: string): Participant | undefined;
   getParticipantByToken(token: string): Participant | undefined;
   findParticipantByName(name: string): Participant | undefined;
+  authenticateParticipant(token: string, name: string): Promise<void>;
   verifyParticipantName(token: string, name: string): Participant | undefined;
   getQuestionBank(): QuestionBank;
   saveQuestionBank(markdown: string): QuestionBank;
@@ -401,7 +402,18 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
       const matches = state.participants.filter((person) => openCampaignIds.has(person.campaignId) && normalizeName(person.name) === normalized);
       // ponytail: name-only entry rejects duplicates; add an employee ID if duplicate names must be supported.
       if (matches.length !== 1) return undefined;
-      return repository.verifyParticipantName(matches[0].token, name);
+      return matches[0];
+    },
+
+    async authenticateParticipant(token, name) {
+      if (!remoteEnabled) return;
+      const response = await fetch("/api/participant/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, name })
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(body.error || "身份验证失败，请重新输入姓名。");
     },
 
     verifyParticipantName(token, name) {

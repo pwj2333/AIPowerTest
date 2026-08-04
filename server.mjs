@@ -10,6 +10,8 @@ const maxBodyBytes = 5 * 1024 * 1024;
 const defaultAdminPassword = "admin123";
 const adminSessionCookie = "ai_admin_session";
 const adminSessionLifetimeMs = 8 * 60 * 60 * 1000;
+const participantSessionCookie = "ai_participant_session";
+const participantSessionLifetimeMs = 8 * 60 * 60 * 1000;
 
 function emptyState() {
   return { campaigns: [], participants: [], drafts: {}, results: [] };
@@ -134,9 +136,30 @@ function adminCookie(request, token, maxAge) {
   return `${adminSessionCookie}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
 }
 
+function participantCookie(request, token, maxAge) {
+  const secure = request.headers["x-forwarded-proto"] === "https" || request.socket.encrypted;
+  return `${participantSessionCookie}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
+}
+
+function normalizeParticipantName(name) {
+  if (typeof name !== "string" || name.length > 60) return "";
+  return name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("zh-CN");
+}
+
+function participantPatchTargets(patch) {
+  const targets = new Set();
+  if (Array.isArray(patch.participants)) patch.participants.forEach((update) => targets.add(update?.id));
+  if (patch.drafts && typeof patch.drafts === "object" && !Array.isArray(patch.drafts)) Object.keys(patch.drafts).forEach((id) => targets.add(id));
+  if (Array.isArray(patch.results)) patch.results.forEach((result) => targets.add(result?.participantId));
+  if (patch.remove && typeof patch.remove === "object" && !Array.isArray(patch.remove) && Array.isArray(patch.remove.drafts)) {
+    patch.remove.drafts.forEach((id) => targets.add(id));
+  }
+  return targets;
+}
+
 function patchRequiresAdmin(state, patch) {
   if (patch.remove && typeof patch.remove === "object" && !Array.isArray(patch.remove)
-    && Object.values(patch.remove).some((ids) => Array.isArray(ids) && ids.length > 0)) return true;
+    && ["campaigns", "participants", "results"].some((key) => Array.isArray(patch.remove[key]) && patch.remove[key].length > 0)) return true;
   if (patch.campaigns !== undefined || patch.questionBank !== undefined) return true;
   if (!Array.isArray(patch.participants)) return false;
   return patch.participants.some((update) => {
@@ -168,6 +191,7 @@ export function createJsonApiHandler(dataFile = process.env.DATA_FILE || resolve
 } = {}) {
   let writeQueue = Promise.resolve();
   const sessions = new Map();
+  const participantSessions = new Map();
   const loginAttempts = new Map();
   const isAdmin = (request) => {
     const token = readCookie(request, adminSessionCookie);
@@ -175,6 +199,13 @@ export function createJsonApiHandler(dataFile = process.env.DATA_FILE || resolve
     if (expiresAt > Date.now()) return true;
     if (token) sessions.delete(token);
     return false;
+  };
+  const participantSessionId = (request) => {
+    const token = readCookie(request, participantSessionCookie);
+    const session = participantSessions.get(token);
+    if (session?.expiresAt > Date.now()) return session.participantId;
+    if (token) participantSessions.delete(token);
+    return "";
   };
   return async function jsonApiHandler(request, response, next) {
     const pathname = new URL(request.url || "/", "http://localhost").pathname;
@@ -214,6 +245,26 @@ export function createJsonApiHandler(dataFile = process.env.DATA_FILE || resolve
       sendJson(response, 200, { authenticated: false }, { "Set-Cookie": adminCookie(request, "", 0) });
       return;
     }
+    if (pathname === "/api/participant/session" && request.method === "POST") {
+      try {
+        const body = await readJsonBody(request);
+        const state = await readStateFile(dataFile);
+        const normalizedName = normalizeParticipantName(body?.name);
+        const participant = state.participants.find((person) => person.token === body?.token
+          && normalizeParticipantName(person.name) === normalizedName);
+        const campaign = participant && state.campaigns.find((item) => item.id === participant.campaignId);
+        if (!participant || !normalizedName || campaign?.status !== "open") {
+          sendJson(response, 401, { error: "名单身份验证失败，请重新输入姓名。" });
+          return;
+        }
+        const token = randomBytes(32).toString("hex");
+        participantSessions.set(token, { participantId: participant.id, expiresAt: Date.now() + participantSessionLifetimeMs });
+        sendJson(response, 200, { authenticated: true }, { "Set-Cookie": participantCookie(request, token, Math.floor(participantSessionLifetimeMs / 1000)) });
+      } catch (error) {
+        sendJson(response, Number(error?.statusCode) || 400, { error: error instanceof Error ? error.message : "身份验证失败" });
+      }
+      return;
+    }
     if (pathname !== "/api/state") {
       if (next) next();
       else sendJson(response, 404, { error: "接口不存在" });
@@ -228,7 +279,15 @@ export function createJsonApiHandler(dataFile = process.env.DATA_FILE || resolve
         const patch = await readJsonBody(request);
         const operation = writeQueue.then(async () => {
           const currentState = await readStateFile(dataFile);
-          if (patchRequiresAdmin(currentState, patch) && !isAdmin(request)) throw Object.assign(new Error("管理员登录已失效，请重新登录。"), { statusCode: 401 });
+          const adminAuthenticated = isAdmin(request);
+          if (patchRequiresAdmin(currentState, patch) && !adminAuthenticated) throw Object.assign(new Error("管理员登录已失效，请重新登录。"), { statusCode: 401 });
+          if (!adminAuthenticated) {
+            const targets = participantPatchTargets(patch);
+            const authenticatedParticipantId = participantSessionId(request);
+            if (targets.size > 0 && (targets.size !== 1 || !targets.has(authenticatedParticipantId))) {
+              throw Object.assign(new Error("员工身份验证已失效，请重新输入姓名。"), { statusCode: 401 });
+            }
+          }
           const nextState = mergeStatePatch(currentState, patch);
           await writeStateFile(dataFile, nextState);
           return nextState;

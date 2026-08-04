@@ -83,16 +83,17 @@ function IdentityGate({ token, onVerified }: { token: string; onVerified: () => 
   const [error, setError] = useState("");
   const verify = async (event: FormEvent) => {
     event.preventDefault();
-    if (!assessmentRepository.verifyParticipantName(token, name)) {
-      setError("未找到该姓名，请联系管理员。");
-      return;
-    }
     try {
+      await assessmentRepository.authenticateParticipant(token, name);
+      if (!assessmentRepository.verifyParticipantName(token, name)) {
+        setError("未找到该姓名，请联系管理员。");
+        return;
+      }
       await assessmentRepository.flush();
       onVerified();
-    } catch {
+    } catch (identityError) {
       await assessmentRepository.initialize().catch(() => undefined);
-      setError("系统暂时无法保存数据，请稍后重试。");
+      setError(identityError instanceof Error ? identityError.message : "系统暂时无法保存数据，请稍后重试。");
     }
   };
 

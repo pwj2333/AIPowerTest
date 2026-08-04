@@ -21,12 +21,14 @@ export default function HomePage() {
       return;
     }
     try {
+      await assessmentRepository.authenticateParticipant(participant.token, name);
+      assessmentRepository.verifyParticipantName(participant.token, name);
       await assessmentRepository.flush();
       sessionStorage.setItem(`assessment-identity:${participant.token}`, "verified");
       navigate(`/assessment/${participant.token}`);
-    } catch {
+    } catch (identityError) {
       await assessmentRepository.initialize().catch(() => undefined);
-      setError("系统暂时无法保存数据，请稍后重试。");
+      setError(identityError instanceof Error ? identityError.message : "系统暂时无法保存数据，请稍后重试。");
     }
   };
 
