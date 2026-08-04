@@ -17,10 +17,10 @@ describe("QuestionCard option order", () => {
     expect(readScoreOrder("participant-b")).not.toEqual(first);
   });
 
-  it("never puts the highest-score answer last", () => {
-    const lastOptions = Array.from({ length: 40 }, (_, index) => readScoreOrder(`participant-${index}`).at(-1));
+  it("allows every score to appear in every visible position", () => {
+    const orders = Array.from({ length: 80 }, (_, index) => readScoreOrder(`participant-${index}`));
+    const positionsForHighest = new Set(orders.map((order) => order.indexOf("option-3")));
 
-    expect(lastOptions).not.toContain("option-3");
-    expect(new Set(lastOptions).size).toBeGreaterThan(1);
+    expect(positionsForHighest).toEqual(new Set([0, 1, 2, 3]));
   });
 });

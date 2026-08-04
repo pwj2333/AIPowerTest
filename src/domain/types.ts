@@ -30,15 +30,26 @@ export interface Grade {
   tasks: string[];
 }
 
+export interface StageResult {
+  level: number;
+  questionIds: string[];
+  questionCount: number;
+  totalScore: number;
+  status: "passed" | "failed";
+}
+
 export interface AssessmentResult {
   level: number;
   grade: Grade;
   totalScore: number;
   maxScore: number;
   scorePercent: number;
-  levelAverages: Record<number, number>;
-  dimensionScores: Record<AbilityDimension, number>;
+  levelAverages: Partial<Record<number, number>>;
+  dimensionScores: Record<AbilityDimension, number | null>;
   weakDimensions: AbilityDimension[];
+  answeredQuestionCount?: number;
+  stoppedAtLevel?: number;
+  stageResults?: StageResult[];
   confidence: Confidence;
   reviewRequired: boolean;
   completedAt: string;

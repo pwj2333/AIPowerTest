@@ -21,11 +21,13 @@ export default function HomePage() {
       return;
     }
     try {
-      await assessmentRepository.authenticateParticipant(participant.token, name);
-      assessmentRepository.verifyParticipantName(participant.token, name);
+      await assessmentRepository.authenticateParticipant(participant.id, name);
+      const authenticatedParticipant = assessmentRepository.getParticipant(participant.id);
+      if (!authenticatedParticipant?.token) throw new Error("participant session unavailable");
+      assessmentRepository.verifyParticipantName(authenticatedParticipant.token, name);
       await assessmentRepository.flush();
-      sessionStorage.setItem(`assessment-identity:${participant.token}`, "verified");
-      navigate(`/assessment/${participant.token}`);
+      sessionStorage.setItem(`assessment-identity:${authenticatedParticipant.token}`, "verified");
+      navigate(`/assessment/${authenticatedParticipant.token}`);
     } catch (identityError) {
       await assessmentRepository.initialize().catch(() => undefined);
       setError(identityError instanceof Error ? identityError.message : "系统暂时无法保存数据，请稍后重试。");
@@ -42,13 +44,13 @@ export default function HomePage() {
         <div className="hero-copy">
           <span className="eyebrow">AI CAPABILITY ASSESSMENT · 2026</span>
           <h1>看清你真正的<br /><em>AI 能力阶段</em></h1>
-          <p>一套 20 题的工作情景测评，判断你能否把 AI 用成结果、流程、应用与组织能力。</p>
+          <p>一套从 L1 开始的分级自适应测评，根据你的表现决定题量与下一关挑战。</p>
           <form className="hero-name-form" onSubmit={enterAssessment}>
             <label htmlFor="home-employee-name">姓名</label>
             <div><input id="home-employee-name" autoComplete="name" maxLength={60} value={name} onChange={(event) => { setName(event.target.value); setError(""); }} placeholder="请输入姓名" /><button className="button button-primary" type="submit" disabled={!name.trim()}><ClipboardCheck size={18} /> 进入测评 <ArrowRight size={17} /></button></div>
             {error && <p className="form-error" role="alert">{error}</p>}
           </form>
-          <div className="hero-meta"><span><ShieldCheck size={16} /> 约 8–12 分钟</span><span><ShieldCheck size={16} /> 结果仅用于成长与培训诊断</span></div>
+          <div className="hero-meta"><span><ShieldCheck size={16} /> 约 3–12 分钟</span><span><ShieldCheck size={16} /> 结果仅用于成长与培训诊断</span></div>
         </div>
         <div className="hero-tower" aria-label="八级 AI 能力塔">
           <div className="tower-label">能力进阶路径</div>

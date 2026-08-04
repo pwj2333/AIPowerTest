@@ -28,6 +28,36 @@ function normalizeState(value) {
   };
 }
 
+function publicState(state) {
+  const openCampaignIds = new Set(state.campaigns.filter((campaign) => campaign.status === "open").map((campaign) => campaign.id));
+  return {
+    campaigns: state.campaigns,
+    participants: state.participants.filter((participant) => openCampaignIds.has(participant.campaignId)).map((participant) => ({
+      id: participant.id,
+      campaignId: participant.campaignId,
+      name: participant.name,
+      department: participant.department,
+      position: participant.position
+    })),
+    drafts: {},
+    results: []
+  };
+}
+
+function participantState(state, participantId) {
+  const participant = state.participants.find((item) => item.id === participantId);
+  if (!participant) return publicState(state);
+  const campaign = state.campaigns.find((item) => item.id === participant.campaignId);
+  const draft = state.drafts[participant.id];
+  return {
+    campaigns: campaign ? [campaign] : [],
+    participants: [participant],
+    drafts: draft ? { [participant.id]: draft } : {},
+    results: state.results.filter((result) => result.participantId === participant.id),
+    ...(state.questionBank ? { questionBank: state.questionBank } : {})
+  };
+}
+
 function mergeByKey(current, updates, key) {
   const merged = [...current];
   for (const update of updates) {
@@ -157,6 +187,130 @@ function participantPatchTargets(patch) {
   return targets;
 }
 
+function parseAssessmentQuestions(markdown) {
+  if (typeof markdown !== "string" || markdown.length > 1_000_000) throw new Error("invalid question bank");
+  const lines = markdown.replace(/^\uFEFF/, "").split(/\r?\n/);
+  const starts = lines.flatMap((line, index) => line.startsWith("## ") ? [index] : []);
+  const questions = starts.map((start, questionIndex) => {
+    const header = lines[start].match(/^##\s+([A-Za-z0-9_-]+)\s*\|\s*L([1-8])\s*\|\s*(office|scenario|workflow|innovation)\s*\|/);
+    if (!header) throw new Error("invalid question header");
+    const [, id, levelText, dimension] = header;
+    const end = starts[questionIndex + 1] ?? lines.length;
+    const options = lines.slice(start + 1, end).flatMap((line) => {
+      const match = line.match(/^-\s+\[([0-3])]\s+(.+)$/);
+      return match ? [{ id: `${id}-option-${match[1]}`, score: Number(match[1]), label: match[2].trim() }] : [];
+    });
+    if (options.length !== 4 || new Set(options.map((option) => option.score)).size !== 4) throw new Error("invalid question options");
+    return { id, level: Number(levelText), dimension, options };
+  });
+  if (!questions.length || new Set(questions.map((question) => question.id)).size !== questions.length) throw new Error("invalid question bank");
+  return questions;
+}
+
+function stableAssessmentOrder(items, seed) {
+  const ordered = [...items];
+  let state = [...seed].reduce((total, character) => ((total * 31) + character.charCodeAt(0)) >>> 0, 7);
+  for (let index = ordered.length - 1; index > 0; index -= 1) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    const swapIndex = state % (index + 1);
+    [ordered[index], ordered[swapIndex]] = [ordered[swapIndex], ordered[index]];
+  }
+  return ordered;
+}
+
+function expectedAdaptiveSubmission(participant, campaign, questionBank, submitted) {
+  if (!submitted || typeof submitted !== "object" || Array.isArray(submitted)) throw new Error("invalid result");
+  if (submitted.participantId !== participant.id || submitted.campaignId !== campaign.id) throw new Error("result target mismatch");
+  if (submitted.questionVersion !== questionBank.version) throw new Error("question bank version mismatch");
+  if (!Number.isFinite(submitted.elapsedSeconds) || submitted.elapsedSeconds < 0) throw new Error("invalid elapsed time");
+  if (!submitted.answers || typeof submitted.answers !== "object" || Array.isArray(submitted.answers)) throw new Error("invalid answers");
+  const questions = parseAssessmentQuestions(questionBank.markdown);
+  const byId = new Map(questions.map((question) => [question.id, question]));
+  const seed = `${participant.id}:${questionBank.version}`;
+  const answerEntries = Object.entries(submitted.answers);
+  if (answerEntries.some(([id, optionId]) => !byId.has(id) || typeof optionId !== "string")) throw new Error("unknown answer");
+  const stageResults = [];
+  const attempted = [];
+  let level = 0;
+  for (let stageLevel = 1; stageLevel <= 8; stageLevel += 1) {
+    const stage = stableAssessmentOrder(questions.filter((question) => question.level === stageLevel), `${seed}:L${stageLevel}`).slice(0, 5);
+    if (stage.length < 5) throw new Error("incomplete question bank");
+    const scoreFor = (question) => question.options.find((option) => option.id === submitted.answers[question.id])?.score;
+    const firstScores = stage.slice(0, 3).map(scoreFor);
+    if (firstScores.some((score) => score === undefined)) throw new Error("incomplete adaptive path");
+    const firstTotal = firstScores.reduce((total, score) => total + score, 0);
+    let questionCount;
+    let status;
+    let totalScore;
+    if (firstScores.every((score) => score >= 2)) {
+      questionCount = 3;
+      status = "passed";
+      totalScore = firstTotal;
+    } else if (firstScores.every((score) => score <= 1)) {
+      questionCount = 3;
+      status = "failed";
+      totalScore = firstTotal;
+    } else {
+      const allScores = stage.map(scoreFor);
+      if (allScores.some((score) => score === undefined)) throw new Error("incomplete adaptive path");
+      questionCount = 5;
+      totalScore = allScores.reduce((total, score) => total + score, 0);
+      status = totalScore >= 10 ? "passed" : "failed";
+    }
+    const questionIds = stage.slice(0, questionCount).map((question) => question.id);
+    attempted.push(...stage.slice(0, questionCount));
+    stageResults.push({ level: stageLevel, questionIds, questionCount, totalScore, status });
+    if (status === "failed") break;
+    level = stageLevel;
+  }
+  const finalStage = stageResults.at(-1);
+  if (!finalStage || (finalStage.status === "passed" && level < 8)) throw new Error("incomplete adaptive path");
+  const attemptedIds = new Set(attempted.map((question) => question.id));
+  if (answerEntries.length !== attemptedIds.size || answerEntries.some(([id]) => !attemptedIds.has(id))) throw new Error("answers include unattempted questions");
+  const totalScore = attempted.reduce((total, question) => total + question.options.find((option) => option.id === submitted.answers[question.id]).score, 0);
+  const maxScore = attempted.length * 3;
+  const dimensionScores = Object.fromEntries(["office", "scenario", "workflow", "innovation"].map((dimension) => {
+    const values = attempted.filter((question) => question.dimension === dimension).map((question) => question.options.find((option) => option.id === submitted.answers[question.id]).score);
+    return [dimension, values.length ? Math.round((values.reduce((sum, value) => sum + value, 0) / values.length / 3) * 100) : null];
+  }));
+  const weakDimensions = ["office", "scenario", "workflow", "innovation"]
+    .filter((dimension) => dimensionScores[dimension] !== null)
+    .sort((left, right) => dimensionScores[left] - dimensionScores[right]).slice(0, 2);
+  const boundary = stageResults.some((stage) => stage.questionCount === 5 && (stage.totalScore === 9 || stage.totalScore === 10));
+  const expected = {
+    level,
+    totalScore,
+    maxScore,
+    scorePercent: Math.round((totalScore / maxScore) * 100),
+    levelAverages: Object.fromEntries(stageResults.map((stage) => [stage.level, stage.totalScore / stage.questionCount])),
+    dimensionScores,
+    weakDimensions,
+    answeredQuestionCount: attempted.length,
+    stoppedAtLevel: finalStage.level,
+    stageResults,
+    confidence: submitted.elapsedSeconds < attempted.length * 9 || boundary ? "low" : "high",
+    reviewRequired: level >= 6
+  };
+  const actual = submitted.result;
+  if (!actual || typeof actual !== "object" || Array.isArray(actual)) throw new Error("invalid result");
+  for (const key of ["level", "totalScore", "maxScore", "scorePercent", "answeredQuestionCount", "stoppedAtLevel", "confidence", "reviewRequired"]) {
+    if (actual[key] !== expected[key]) throw new Error("result score mismatch");
+  }
+  if (JSON.stringify(actual.levelAverages) !== JSON.stringify(expected.levelAverages)
+    || JSON.stringify(actual.dimensionScores) !== JSON.stringify(expected.dimensionScores)
+    || JSON.stringify(actual.weakDimensions) !== JSON.stringify(expected.weakDimensions)
+    || JSON.stringify(actual.stageResults) !== JSON.stringify(expected.stageResults)) throw new Error("result path mismatch");
+  if (!actual.grade || typeof actual.grade !== "object" || Array.isArray(actual.grade) || actual.grade.level !== level) throw new Error("result grade mismatch");
+  return {
+    ...submitted,
+    result: {
+      ...actual,
+      grade: { level, code: `L${level}`, name: `L${level}`, capability: "", color: "", tasks: [] },
+      completedAt: new Date().toISOString()
+    }
+  };
+}
+
 function patchRequiresAdmin(state, patch) {
   if (patch.remove && typeof patch.remove === "object" && !Array.isArray(patch.remove)
     && ["campaigns", "participants", "results"].some((key) => Array.isArray(patch.remove[key]) && patch.remove[key].length > 0)) return true;
@@ -250,7 +404,7 @@ export function createJsonApiHandler(dataFile = process.env.DATA_FILE || resolve
         const body = await readJsonBody(request);
         const state = await readStateFile(dataFile);
         const normalizedName = normalizeParticipantName(body?.name);
-        const participant = state.participants.find((person) => person.token === body?.token
+        const participant = state.participants.find((person) => (person.token === body?.token || person.id === body?.participantId)
           && normalizeParticipantName(person.name) === normalizedName);
         const campaign = participant && state.campaigns.find((item) => item.id === participant.campaignId);
         if (!participant || !normalizedName || campaign?.status !== "open") {
@@ -272,7 +426,9 @@ export function createJsonApiHandler(dataFile = process.env.DATA_FILE || resolve
     }
     try {
       if (request.method === "GET") {
-        sendJson(response, 200, await readStateFile(dataFile));
+        const state = await readStateFile(dataFile);
+        const participantId = participantSessionId(request);
+        sendJson(response, 200, isAdmin(request) ? state : participantId ? participantState(state, participantId) : publicState(state));
         return;
       }
       if (request.method === "PATCH") {
@@ -286,6 +442,25 @@ export function createJsonApiHandler(dataFile = process.env.DATA_FILE || resolve
             const authenticatedParticipantId = participantSessionId(request);
             if (targets.size > 0 && (targets.size !== 1 || !targets.has(authenticatedParticipantId))) {
               throw Object.assign(new Error("员工身份验证已失效，请重新输入姓名。"), { statusCode: 401 });
+            }
+          }
+          if (!adminAuthenticated && Array.isArray(patch.results) && patch.results.length) {
+            const authenticatedParticipantId = participantSessionId(request);
+            const participant = currentState.participants.find((item) => item.id === authenticatedParticipantId);
+            const campaign = participant && currentState.campaigns.find((item) => item.id === participant.campaignId);
+            if (!participant || !campaign || campaign.status !== "open" || currentState.results.some((item) => item.participantId === participant.id)) {
+              throw Object.assign(new Error("assessment is not accepting submissions"), { statusCode: 409 });
+            }
+            if (patch.results.length !== 1) throw Object.assign(new Error("one result per submission"), { statusCode: 400 });
+            try {
+              patch.results[0] = expectedAdaptiveSubmission(participant, campaign, currentState.questionBank, patch.results[0]);
+              if (Array.isArray(patch.participants)) {
+                patch.participants = patch.participants.map((update) => update?.id === participant.id
+                  ? { ...update, completedAt: patch.results[0].result.completedAt }
+                  : update);
+              }
+            } catch (error) {
+              throw Object.assign(error instanceof Error ? error : new Error("invalid assessment result"), { statusCode: 400 });
             }
           }
           const nextState = mergeStatePatch(currentState, patch);

@@ -15,10 +15,6 @@ function stableOptionOrder(question: AssessmentQuestion, seed: string) {
     const swapIndex = state % (index + 1);
     [ordered[index], ordered[swapIndex]] = [ordered[swapIndex], ordered[index]];
   }
-  const lastIndex = ordered.length - 1;
-  if (ordered[lastIndex]?.score === 3) {
-    [ordered[lastIndex], ordered[lastIndex - 1]] = [ordered[lastIndex - 1], ordered[lastIndex]];
-  }
   return ordered;
 }
 

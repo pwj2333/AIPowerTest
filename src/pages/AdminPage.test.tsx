@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
+import { selectStageQuestions } from "../domain/scoring";
 import { assessmentRepository } from "../domain/store";
 
 describe("administrator workspace", () => {
@@ -19,8 +20,8 @@ describe("administrator workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("参测率")).toBeInTheDocument();
-    expect(screen.getByText("部门平均等级")).toBeInTheDocument();
+    expect(screen.getByText("参与率")).toBeInTheDocument();
+    expect(screen.getByText("部门等级概览")).toBeInTheDocument();
     expect(screen.getByText("优先补强能力")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("link", { name: "人员名单" }));
@@ -28,6 +29,17 @@ describe("administrator workspace", () => {
     fireEvent.change(screen.getByLabelText("CSV 人员数据"), { target: { value: "姓名,部门,岗位\n测试员工,运营部,专员" } });
     fireEvent.click(screen.getByRole("button", { name: "导入人员" }));
     expect(await screen.findByText("成功导入 1 人")).toBeInTheDocument();
+  });
+
+  it("does not rank unchallenged dimensions as priority gaps", () => {
+    assessmentRepository.createCampaign({ name: "No results" });
+    const { container } = render(
+      <MemoryRouter initialEntries={["/admin"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(container.querySelectorAll(".priority-item")).toHaveLength(0);
   });
 
   it("validates and saves Markdown question edits", async () => {
@@ -38,10 +50,11 @@ describe("administrator workspace", () => {
     );
 
     const editor = screen.getByLabelText("Markdown 题库内容");
-    fireEvent.change(editor, { target: { value: (editor as HTMLTextAreaElement).value.replace("你要写会议通知", "你要写正式会议通知") } });
+    const firstPrompt = assessmentRepository.getQuestionBank().questions[0].prompt;
+    fireEvent.change(editor, { target: { value: (editor as HTMLTextAreaElement).value.replace(firstPrompt, `${firstPrompt}（正式场景）`) } });
     fireEvent.click(screen.getByRole("button", { name: "保存新版本" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("已保存 v2.2");
-    expect(assessmentRepository.getQuestionBank().questions[0].prompt).toContain("正式会议通知");
+    expect(await screen.findByRole("status")).toHaveTextContent("已保存 v3.1");
+    expect(assessmentRepository.getQuestionBank().questions[0].prompt).toContain("正式场景");
   });
 
   it("copies people between campaigns and exposes a roster export", async () => {
@@ -88,7 +101,9 @@ describe("administrator workspace", () => {
     const first = assessmentRepository.createCampaign({ name: "First" });
     const second = assessmentRepository.createCampaign({ name: "Second" });
     const [person] = assessmentRepository.importParticipants(second.id, [{ name: "Alice", department: "Sales", position: "Lead" }]).imported;
-    const answers = Object.fromEntries(assessmentRepository.getQuestionBank().questions.map((question) => [question.id, question.options[0].id]));
+    const bank = assessmentRepository.getQuestionBank();
+    const stage = selectStageQuestions(bank.questions, 1, `${person.id}:${bank.version}`);
+    const answers = Object.fromEntries(stage.slice(0, 3).map((question) => [question.id, `${question.id}-option-0`]));
     assessmentRepository.submitAssessment(person.id, answers, 60);
 
     render(

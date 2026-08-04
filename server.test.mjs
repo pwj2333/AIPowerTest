@@ -6,6 +6,59 @@ import { join } from "node:path";
 import test from "node:test";
 import { mergeStatePatch, readStateFile, startServer, writeStateFile } from "./server.mjs";
 
+function stableOrder(items, seed) {
+  const ordered = [...items];
+  let state = [...seed].reduce((total, character) => ((total * 31) + character.charCodeAt(0)) >>> 0, 7);
+  for (let index = ordered.length - 1; index > 0; index -= 1) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    const swapIndex = state % (index + 1);
+    [ordered[index], ordered[swapIndex]] = [ordered[swapIndex], ordered[index]];
+  }
+  return ordered;
+}
+
+function adaptiveFixture(participantId = "p1", version = "v3.0") {
+  const idsByLevel = Array.from({ length: 8 }, (_, levelIndex) => Array.from({ length: 5 }, (_, questionIndex) => `q${levelIndex + 1}${questionIndex + 1}`));
+  const markdown = ["# Test question bank", ...idsByLevel.flatMap((ids, levelIndex) => ids.map((id) => [
+    `## ${id} | L${levelIndex + 1} | office | test`,
+    `> Question ${id}`,
+    ...[0, 1, 2, 3].map((score) => `- [${score}] Option ${score} for ${id}`)
+  ].join("\n")))].join("\n\n");
+  const answers = {};
+  const stageResults = idsByLevel.map((ids, levelIndex) => {
+    const questionIds = stableOrder(ids, `${participantId}:${version}:L${levelIndex + 1}`).slice(0, 3);
+    questionIds.forEach((id) => { answers[id] = `${id}-option-3`; });
+    return { level: levelIndex + 1, questionIds, questionCount: 3, totalScore: 9, status: "passed" };
+  });
+  const levelAverages = Object.fromEntries(stageResults.map((stage) => [stage.level, 3]));
+  return {
+    questionBank: { version, markdown, updatedAt: "2026-08-04T00:00:00.000Z" },
+    submission: {
+      participantId,
+      campaignId: "c1",
+      questionVersion: version,
+      answers,
+      elapsedSeconds: 600,
+      result: {
+        level: 8,
+        grade: { level: 8, code: "L8", name: "Level 8", capability: "capability", color: "#000", tasks: ["task 1", "task 2", "task 3"] },
+        totalScore: 72,
+        maxScore: 72,
+        scorePercent: 100,
+        levelAverages,
+        dimensionScores: { office: 100, scenario: null, workflow: null, innovation: null },
+        weakDimensions: ["office"],
+        answeredQuestionCount: 24,
+        stoppedAtLevel: 8,
+        stageResults,
+        confidence: "high",
+        reviewRequired: true,
+        completedAt: "2026-08-04T00:00:00.000Z"
+      }
+    }
+  };
+}
+
 test("persists JSON state and atomically replaces the previous file", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ai-assessment-"));
   const file = join(directory, "assessment.json");
@@ -93,14 +146,16 @@ test("requires admin authentication for removal patches", async () => {
 test("permits a rostered participant session to submit without administrator authentication", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ai-assessment-participant-submit-"));
   const dataFile = join(directory, "assessment.json");
+  const fixture = adaptiveFixture();
   await writeStateFile(dataFile, {
-    campaigns: [{ id: "c1", status: "open" }],
+    campaigns: [{ id: "c1", status: "open", questionVersion: fixture.questionBank.version }],
     participants: [
       { id: "p1", campaignId: "c1", name: "Alice", department: "Operations", position: "Specialist", token: "invite-p1" },
       { id: "p2", campaignId: "c1", name: "Bob", department: "Operations", position: "Specialist", token: "invite-p2" }
     ],
     drafts: { p1: { q1: "q1-option-1" } },
-    results: []
+    results: [],
+    questionBank: fixture.questionBank
   });
   const server = startServer({ port: 0, host: "127.0.0.1", dataFile, adminPassword: "submit-password" });
   try {
@@ -110,7 +165,7 @@ test("permits a rostered participant session to submit without administrator aut
     const submissionPatch = {
       participants: [{ id: "p1", completedAt: "2026-08-04T00:00:00.000Z" }],
       drafts: { p1: null },
-      results: [{ participantId: "p1", campaignId: "c1", answers: { q1: "q1-option-1" } }],
+      results: [fixture.submission],
       remove: { drafts: ["p1"] }
     };
     let response = await fetch(`http://127.0.0.1:${address.port}/api/state`, {
@@ -137,7 +192,7 @@ test("permits a rostered participant session to submit without administrator aut
 
     assert.equal(response.status, 200);
     const state = await response.json();
-    assert.equal(state.participants[0].completedAt, "2026-08-04T00:00:00.000Z");
+    assert.ok(state.participants[0].completedAt);
     assert.equal(state.results[0].participantId, "p1");
     assert.equal(state.drafts.p1, undefined);
 
@@ -195,6 +250,103 @@ test("restores API data after a server restart", async () => {
     assert.ok(address && typeof address === "object");
     response = await fetch(`http://127.0.0.1:${address.port}/api/state`);
     assert.equal((await response.json()).campaigns[0].name, "持久化检查");
+  } finally {
+    await new Promise((resolveClose) => server.close(resolveClose));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects forged participant results", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ai-assessment-forged-result-"));
+  const dataFile = join(directory, "assessment.json");
+  await writeStateFile(dataFile, {
+    campaigns: [{ id: "c1", status: "open", questionVersion: "v3.0" }],
+    participants: [{ id: "p1", campaignId: "c1", name: "Alice", token: "invite-p1" }],
+    drafts: {},
+    results: [],
+    questionBank: { version: "v3.0", markdown: "", updatedAt: "2026-08-04T00:00:00.000Z" }
+  });
+  const server = startServer({ port: 0, host: "127.0.0.1", dataFile });
+  try {
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    let response = await fetch(`http://127.0.0.1:${address.port}/api/participant/session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "invite-p1", name: "Alice" })
+    });
+    const cookie = response.headers.get("set-cookie")?.split(";", 1)[0];
+    assert.equal(response.status, 200);
+    response = await fetch(`http://127.0.0.1:${address.port}/api/state`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ results: [{
+        participantId: "p1",
+        campaignId: "c1",
+        questionVersion: "v3.0",
+        answers: { q999: "q999-option-3" },
+        elapsedSeconds: 1,
+        result: { level: 8, totalScore: 999, maxScore: 999, scorePercent: 100 }
+      }] })
+    });
+    assert.equal(response.status, 400);
+  } finally {
+    await new Promise((resolveClose) => server.close(resolveClose));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("scopes state reads to the authenticated role", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ai-assessment-scoped-state-"));
+  const dataFile = join(directory, "assessment.json");
+  await writeStateFile(dataFile, {
+    campaigns: [{ id: "c1", status: "open", questionVersion: "v3.0" }],
+    participants: [
+      { id: "p1", campaignId: "c1", name: "Alice", token: "invite-p1" },
+      { id: "p2", campaignId: "c1", name: "Bob", token: "invite-p2" }
+    ],
+    drafts: { p1: { answers: { q1: "secret" } }, p2: { answers: { q2: "secret" } } },
+    results: [{ participantId: "p2", campaignId: "c1", answers: { q2: "secret" } }],
+    questionBank: { version: "v3.0", markdown: "secret bank", updatedAt: "2026-08-04T00:00:00.000Z" }
+  });
+  const server = startServer({ port: 0, host: "127.0.0.1", dataFile, adminPassword: "scope-password" });
+  try {
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    let response = await fetch(`http://127.0.0.1:${address.port}/api/state`);
+    let state = await response.json();
+    assert.equal(state.participants[0].token, undefined);
+    assert.deepEqual(state.drafts, {});
+    assert.deepEqual(state.results, []);
+    assert.equal(state.questionBank, undefined);
+
+    response = await fetch(`http://127.0.0.1:${address.port}/api/participant/session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "invite-p1", name: "Alice" })
+    });
+    const participantCookie = response.headers.get("set-cookie")?.split(";", 1)[0];
+    response = await fetch(`http://127.0.0.1:${address.port}/api/state`, { headers: { Cookie: participantCookie } });
+    state = await response.json();
+    assert.deepEqual(state.participants.map((participant) => participant.id), ["p1"]);
+    assert.equal(state.participants[0].token, "invite-p1");
+    assert.deepEqual(Object.keys(state.drafts), ["p1"]);
+    assert.deepEqual(state.results, []);
+    assert.equal(state.questionBank.version, "v3.0");
+
+    response = await fetch(`http://127.0.0.1:${address.port}/api/admin/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "scope-password" })
+    });
+    const adminCookie = response.headers.get("set-cookie")?.split(";", 1)[0];
+    response = await fetch(`http://127.0.0.1:${address.port}/api/state`, { headers: { Cookie: adminCookie } });
+    state = await response.json();
+    assert.equal(state.participants.length, 2);
+    assert.equal(state.participants[1].token, "invite-p2");
+    assert.equal(state.results.length, 1);
   } finally {
     await new Promise((resolveClose) => server.close(resolveClose));
     await rm(directory, { recursive: true, force: true });

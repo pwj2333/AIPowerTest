@@ -1,5 +1,5 @@
 import { defaultQuestionMarkdown, parseQuestionMarkdown } from "./questions";
-import { scoreAssessment } from "./scoring";
+import { scoreAdaptiveAssessment } from "./scoring";
 import type { AnswerMap, AssessmentQuestion, AssessmentResult } from "./types";
 
 export type CampaignStatus = "draft" | "open" | "closed" | "archived";
@@ -48,6 +48,14 @@ export interface StoredResult {
   result: AssessmentResult;
 }
 
+export interface AssessmentDraft {
+  questionVersion: string;
+  activeLevel: number;
+  startedAt: string;
+  answers: AnswerMap;
+  resetRequired?: boolean;
+}
+
 interface StoredQuestionBank {
   version: string;
   markdown: string;
@@ -61,7 +69,7 @@ export interface QuestionBank extends StoredQuestionBank {
 interface AssessmentState {
   campaigns: AssessmentCampaign[];
   participants: Participant[];
-  drafts: Record<string, AnswerMap>;
+  drafts: Record<string, AssessmentDraft>;
   results: StoredResult[];
   questionBank: StoredQuestionBank;
 }
@@ -69,7 +77,7 @@ interface AssessmentState {
 interface AssessmentStatePatch {
   campaigns?: Array<Partial<AssessmentCampaign> & Pick<AssessmentCampaign, "id">>;
   participants?: Array<Partial<Participant> & Pick<Participant, "id">>;
-  drafts?: Record<string, AnswerMap | null>;
+  drafts?: Record<string, AssessmentDraft | null>;
   results?: StoredResult[];
   questionBank?: StoredQuestionBank;
   remove?: {
@@ -81,7 +89,7 @@ interface AssessmentStatePatch {
 }
 
 const defaultStorageKey = "ai-capability-assessment-v2";
-const currentQuestionBankVersion = "v2.1";
+const currentQuestionBankVersion = "v3.0";
 const memoryStorage = new Map<string, string>();
 
 function makeId(prefix: string): string {
@@ -97,12 +105,35 @@ function emptyState(): AssessmentState {
 }
 
 function normalizeState(stored: Partial<AssessmentState>): AssessmentState {
+  const storedQuestionBank = stored.questionBank ?? initialQuestionBank();
+  const storedVersion = typeof storedQuestionBank.version === "string" ? storedQuestionBank.version : currentQuestionBankVersion;
+  const rawDrafts = stored.drafts && typeof stored.drafts === "object" ? stored.drafts as Record<string, unknown> : {};
+  const drafts = Object.fromEntries(Object.entries(rawDrafts).flatMap(([participantId, value]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const candidate = value as Partial<AssessmentDraft>;
+    if (candidate.answers && typeof candidate.answers === "object" && !Array.isArray(candidate.answers)) {
+      return [[participantId, {
+        questionVersion: typeof candidate.questionVersion === "string" ? candidate.questionVersion : storedVersion,
+        activeLevel: Number.isInteger(candidate.activeLevel) ? Number(candidate.activeLevel) : 1,
+        startedAt: typeof candidate.startedAt === "string" ? candidate.startedAt : new Date().toISOString(),
+        answers: candidate.answers,
+        ...(candidate.resetRequired ? { resetRequired: true } : {})
+      } satisfies AssessmentDraft]];
+    }
+    return [[participantId, {
+      questionVersion: storedVersion,
+      activeLevel: 1,
+      startedAt: new Date().toISOString(),
+      answers: value as AnswerMap,
+      resetRequired: true
+    } satisfies AssessmentDraft]];
+  })) as Record<string, AssessmentDraft>;
   const state: AssessmentState = {
     campaigns: Array.isArray(stored.campaigns) ? stored.campaigns : [],
     participants: Array.isArray(stored.participants) ? stored.participants : [],
-    drafts: stored.drafts && typeof stored.drafts === "object" ? stored.drafts : {},
+    drafts,
     results: Array.isArray(stored.results) ? stored.results : [],
-    questionBank: stored.questionBank ?? initialQuestionBank()
+    questionBank: storedQuestionBank
   };
   const useDefaultQuestionBank = () => {
     state.questionBank = initialQuestionBank();
@@ -110,12 +141,17 @@ function normalizeState(stored: Partial<AssessmentState>): AssessmentState {
       ? { ...campaign, questionVersion: state.questionBank.version }
       : campaign);
   };
-  if (state.questionBank.version === "v1.0") useDefaultQuestionBank();
+  const isKnownDefaultVersion = state.questionBank.version === "v1.0" || state.questionBank.version === "v2.1";
+  let validCurrentBank = false;
   try {
-    parseQuestionMarkdown(state.questionBank.markdown);
+    validCurrentBank = parseQuestionMarkdown(state.questionBank.markdown).length === 100;
   } catch {
-    useDefaultQuestionBank();
+    validCurrentBank = false;
   }
+  if (isKnownDefaultVersion || (state.questionBank.version === currentQuestionBankVersion && !validCurrentBank)) useDefaultQuestionBank();
+  Object.values(state.drafts).forEach((draft) => {
+    if (draft.questionVersion !== state.questionBank.version) draft.resetRequired = true;
+  });
   return state;
 }
 
@@ -167,8 +203,13 @@ function normalizeName(name: string): string {
   return name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("zh-CN");
 }
 
+function isAssessmentDraft(value: AssessmentDraft | AnswerMap): value is AssessmentDraft {
+  const answers = (value as Partial<AssessmentDraft>).answers;
+  return Boolean(answers && typeof answers === "object" && !Array.isArray(answers));
+}
+
 export interface AssessmentRepository {
-  initialize(): Promise<void>;
+  initialize(options?: { persistMigration?: boolean }): Promise<void>;
   refresh(): Promise<void>;
   flush(): Promise<void>;
   createCampaign(input: Pick<AssessmentCampaign, "name">): AssessmentCampaign;
@@ -189,8 +230,8 @@ export interface AssessmentRepository {
   verifyParticipantName(token: string, name: string): Participant | undefined;
   getQuestionBank(): QuestionBank;
   saveQuestionBank(markdown: string): QuestionBank;
-  saveDraft(participantId: string, answers: AnswerMap): void;
-  getDraft(participantId: string): AnswerMap;
+  saveDraft(participantId: string, draft: AssessmentDraft | AnswerMap): void;
+  getDraft(participantId: string): AssessmentDraft | undefined;
   submitAssessment(participantId: string, answers: AnswerMap, elapsedSeconds: number): AssessmentResult;
   getResult(participantId: string): AssessmentResult | undefined;
   listResults(campaignId: string): StoredResult[];
@@ -250,14 +291,33 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
   };
 
   const repository: AssessmentRepository = {
-    async initialize() {
+    async initialize(options = {}) {
       const response = await fetch("/api/state", { headers: { Accept: "application/json" } });
       const body = await response.json().catch(() => ({})) as Partial<AssessmentState> & { error?: string };
       if (!response.ok) throw new Error(body.error || "无法读取服务器数据");
-      remoteState = normalizeState(body);
+      const normalized = normalizeState(body);
+      const originalCampaigns = new Map((Array.isArray(body.campaigns) ? body.campaigns : []).map((campaign) => [campaign.id, campaign]));
+      const changedCampaigns = normalized.campaigns
+        .filter((campaign) => originalCampaigns.get(campaign.id)?.questionVersion !== campaign.questionVersion)
+        .map(({ id, questionVersion }) => ({ id, questionVersion }));
+      const migrationPatch: AssessmentStatePatch = {
+        ...(!body.questionBank || JSON.stringify(body.questionBank) !== JSON.stringify(normalized.questionBank) ? { questionBank: normalized.questionBank } : {}),
+        ...(changedCampaigns.length ? { campaigns: changedCampaigns } : {})
+      };
+      remoteState = normalized;
       remoteEnabled = true;
       persistQueue = Promise.resolve();
       writeGeneration = 0;
+      if (options.persistMigration && Object.keys(migrationPatch).length) {
+        const migrationResponse = await fetch("/api/state", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(migrationPatch)
+        });
+        const migrationBody = await migrationResponse.json().catch(() => ({})) as Partial<AssessmentState> & { error?: string };
+        if (!migrationResponse.ok) throw new Error(migrationBody.error || "question bank migration failed");
+        remoteState = normalizeState(migrationBody);
+      }
     },
 
     async refresh() {
@@ -294,6 +354,7 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
       const state = read();
       const campaign = requireCampaign(state, campaignId);
       campaign.status = status;
+      if (status === "open") campaign.questionVersion = state.questionBank.version;
       write(state);
       return campaign;
     },
@@ -410,9 +471,10 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
       const response = await fetch("/api/participant/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, name })
+        body: JSON.stringify({ token, participantId: token, name })
       });
       const body = await response.json().catch(() => ({})) as { error?: string };
+      if (response.ok) await repository.initialize();
       if (!response.ok) throw new Error(body.error || "身份验证失败，请重新输入姓名。");
     },
 
@@ -438,24 +500,38 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
       const parsedQuestions = parseQuestionMarkdown(markdown);
       const state = read();
       const versionMatch = state.questionBank.version.match(/^v(\d+)\.(\d+)$/);
-      const major = versionMatch?.[1] ?? "2";
-      const revision = Number(versionMatch?.[2] ?? 0) + 1;
+      const major = Math.max(3, Number(versionMatch?.[1] ?? 3));
+      const revision = Number(versionMatch?.[1]) === 3 ? Number(versionMatch?.[2] ?? 0) + 1 : 1;
       state.questionBank = { version: `v${major}.${revision}`, markdown, updatedAt: new Date().toISOString() };
       state.campaigns.filter((campaign) => campaign.status === "open").forEach((campaign) => { campaign.questionVersion = state.questionBank.version; });
       write(state);
       return { ...state.questionBank, questions: parsedQuestions };
     },
 
-    saveDraft(participantId, answers) {
+    saveDraft(participantId, draftInput) {
       const state = read();
       const participant = requireParticipant(state, participantId);
       if (state.results.some((item) => item.participantId === participant.id)) return;
-      state.drafts[participantId] = answers;
+      const draft: AssessmentDraft = isAssessmentDraft(draftInput)
+        ? draftInput
+        : {
+          questionVersion: state.questionBank.version,
+          activeLevel: 1,
+          startedAt: new Date().toISOString(),
+          answers: draftInput
+        } satisfies AssessmentDraft;
+      state.drafts[participantId] = {
+        ...draft,
+        answers: { ...draft.answers },
+        questionVersion: draft.questionVersion || state.questionBank.version,
+        activeLevel: Math.max(1, Math.min(8, draft.activeLevel || 1)),
+        startedAt: draft.startedAt || new Date().toISOString()
+      };
       write(state);
     },
 
     getDraft(participantId) {
-      return read().drafts[participantId] ?? {};
+      return read().drafts[participantId];
     },
 
     submitAssessment(participantId, answers, elapsedSeconds) {
@@ -465,11 +541,14 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
       if (campaign.status !== "open") throw new Error("当前测评批次未开放");
       if (state.results.some((item) => item.participantId === participantId)) throw new Error("该员工已完成本批次测评");
       const bankQuestions = parseQuestionMarkdown(state.questionBank.markdown);
-      const complete = bankQuestions.every((question) => question.options.some((option) => option.id === answers[question.id]));
-      const hasUnknownAnswers = Object.keys(answers).some((questionId) => !bankQuestions.some((question) => question.id === questionId));
-      if (!complete || hasUnknownAnswers) throw new Error(`请完成全部 ${bankQuestions.length} 道题后再提交`);
-
-      const result = scoreAssessment(answers, elapsedSeconds, bankQuestions);
+      const optionIds = new Map(bankQuestions.map((question) => [question.id, new Set(question.options.map((option) => option.id))]));
+      if (Object.entries(answers).some(([questionId, optionId]) => !optionIds.get(questionId)?.has(optionId))) {
+        throw new Error("答案包含无效题目或选项");
+      }
+      if (state.drafts[participantId]?.resetRequired) throw new Error("题库已升级，请重新开始测评");
+      const result = scoreAdaptiveAssessment(answers, elapsedSeconds, bankQuestions, `${participantId}:${state.questionBank.version}`);
+      const attemptedIds = new Set(result.stageResults?.flatMap((stage) => stage.questionIds) ?? []);
+      if (Object.keys(answers).some((questionId) => !attemptedIds.has(questionId))) throw new Error("答案包含未抽取或已锁定的题目");
       state.results.push({ participantId, campaignId: participant.campaignId, questionVersion: state.questionBank.version, answers, elapsedSeconds, result });
       participant.completedAt = result.completedAt;
       delete state.drafts[participantId];

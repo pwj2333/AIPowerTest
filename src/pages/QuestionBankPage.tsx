@@ -24,6 +24,7 @@ export default function QuestionBankPage() {
       return { questions: [], error: error instanceof Error ? error.message : "题库格式无法识别。" };
     }
   }, [source]);
+  const levelSummary = useMemo(() => Array.from({ length: 8 }, (_, index) => `L${index + 1} ${parsed.questions.filter((question) => question.level === index + 1).length}`).join(" · "), [parsed.questions]);
   const currentResponses = useMemo(() => assessmentRepository.listCampaigns()
     .flatMap((campaign) => assessmentRepository.listResults(campaign.id))
     .filter((result) => (result.questionVersion ?? "v1.0") === bank.version)
@@ -72,7 +73,7 @@ export default function QuestionBankPage() {
   };
 
   return <div className="admin-page">
-    <div className="page-title-row"><div><span className="section-kicker">QUESTION BANK · {bank.version.toUpperCase()}</span><h1>Markdown 题库</h1><p>题目、能力层级与计分键统一保存在当前题库版本中。</p></div><span className={`editor-status ${parsed.error ? "is-error" : "is-valid"}`}>{parsed.error ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}{parsed.error ? "待修正" : `${parsed.questions.length} 题有效`}</span></div>
+    <div className="page-title-row"><div><span className="section-kicker">QUESTION BANK · {bank.version.toUpperCase()}</span><h1>Markdown 题库</h1><p>题目、能力层级与计分键统一保存在当前题库版本中。</p></div><span className={`editor-status ${parsed.error ? "is-error" : "is-valid"}`}>{parsed.error ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}{parsed.error ? "待修正" : `${parsed.questions.length} 题有效 · ${levelSummary}`}</span></div>
     {message && <p className={message.includes("未载入") || message.includes("失败") ? "form-error" : "success-message"} role="status">{message}</p>}
     <section className="question-editor-layout">
       <article className="admin-panel markdown-editor-panel">

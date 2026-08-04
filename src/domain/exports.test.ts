@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Participant, StoredResult } from "./store";
 import { buildDepartmentSummaryCsv, buildResultsCsv, buildRosterCsv, toCsv } from "./exports";
+import { getGrade } from "./questions";
 
 const alice: Participant = {
   id: "p1",
@@ -51,7 +52,7 @@ describe("csv exports", () => {
   it("builds roster, result, and department summary exports", () => {
     expect(buildRosterCsv([alice, bob], [aliceResult])).toContain('"Alice","Sales","Lead","已完成"');
     expect(buildRosterCsv([alice, bob], [aliceResult])).toContain('"Bob","Sales","Rep","待开始"');
-    expect(buildResultsCsv([alice, bob], [aliceResult])).toContain('"Alice","Sales","Lead","L3","Level 3","高"');
+    expect(buildResultsCsv([alice, bob], [aliceResult])).toContain(`"Alice","Sales","Lead","L3","${getGrade(3).name}","高"`);
     expect(buildDepartmentSummaryCsv([alice, bob], [aliceResult])).toContain('"Sales","2","1","3.0"');
   });
 });

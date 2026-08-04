@@ -1,77 +1,82 @@
 import { describe, expect, it } from "vitest";
-import { defaultQuestionMarkdown, getOptionLengthSpread, hasOptionLengthHint, parseQuestionMarkdown, questions, serializeQuestionMarkdown } from "./questions";
+import { defaultQuestionMarkdown, getOptionLengthSpread, parseQuestionMarkdown, questions, serializeQuestionMarkdown } from "./questions";
+
+const prohibitedOptionText = /直接|不管|随便|完全不用|不用确认|无需核对|凭感觉|就行|就好|再说|吧[，。！？]?$/;
 
 describe("Markdown question bank", () => {
-  it("round-trips the default bank without changing scoring keys", () => {
+  it("round-trips exactly 100 questions with the required level quotas", () => {
     const parsed = parseQuestionMarkdown(serializeQuestionMarkdown(questions));
+    const levelCounts = Object.fromEntries(Array.from({ length: 8 }, (_, index) => {
+      const level = index + 1;
+      return [level, questions.filter((question) => question.level === level).length];
+    }));
+
     expect(parsed).toEqual(questions);
-    expect(parseQuestionMarkdown(defaultQuestionMarkdown)).toHaveLength(20);
+    expect(parseQuestionMarkdown(defaultQuestionMarkdown)).toHaveLength(100);
+    expect(levelCounts).toEqual({ 1: 13, 2: 13, 3: 13, 4: 13, 5: 12, 6: 12, 7: 12, 8: 12 });
   });
 
   it("rejects an incomplete scoring key", () => {
     expect(() => parseQuestionMarkdown(defaultQuestionMarkdown.replace(/^- \[3].+$/m, ""))).toThrow("0、1、2、3 分选项");
   });
 
-  it("keeps option wording balanced instead of exposing the score through length", () => {
-    expect(questions.every((question) => getOptionLengthSpread(question) <= 8)).toBe(true);
-    expect(questions.some(hasOptionLengthHint)).toBe(false);
+  it("balances longest, shortest, and middle answers for every score", () => {
+    const roles = Object.fromEntries([0, 1, 2, 3].map((score) => [score, { longest: 0, shortest: 0, middle: 0 }]));
+
+    questions.forEach((question) => {
+      const lengths = question.options.map((option) => Array.from(option.label).length);
+      const longest = Math.max(...lengths);
+      const shortest = Math.min(...lengths);
+      expect(lengths.filter((length) => length === longest)).toHaveLength(1);
+      expect(lengths.filter((length) => length === shortest)).toHaveLength(1);
+      expect(getOptionLengthSpread(question)).toBeGreaterThanOrEqual(2);
+      expect(getOptionLengthSpread(question)).toBeLessThanOrEqual(8);
+      question.options.forEach((option, index) => {
+        expect(lengths[index]).toBeGreaterThanOrEqual(12);
+        expect(lengths[index]).toBeLessThanOrEqual(30);
+        const role = lengths[index] === longest ? "longest" : lengths[index] === shortest ? "shortest" : "middle";
+        roles[option.score][role] += 1;
+      });
+    });
+
+    expect(roles).toEqual(Object.fromEntries([0, 1, 2, 3].map((score) => [score, { longest: 25, shortest: 25, middle: 50 }])));
   });
 
-  it("uses exactly 18 characters for every answer and asks direct questions", () => {
-    const lengths = questions.flatMap((question) => question.options.map((option) => Array.from(option.label).length));
+  it("uses plausible wording without score-revealing shortcuts or filler", () => {
+    const optionLabels = questions.flatMap((question) => question.options.map((option) => option.label));
 
-    expect(new Set(lengths)).toEqual(new Set([18]));
+    expect(optionLabels.some((label) => prohibitedOptionText.test(label))).toBe(false);
+    expect(new Set(optionLabels).size).toBe(optionLabels.length);
     expect(questions.every((question) => question.prompt.endsWith("？"))).toBe(true);
+    expect(new Set(questions.map((question) => question.prompt)).size).toBe(questions.length);
   });
 
-  it("uses everyday wording instead of management or technical jargon", () => {
-    const visibleText = questions.flatMap((question) => [question.prompt, ...question.options.map((option) => option.label)]).join("");
-    expect(visibleText).not.toMatch(/验收|搭入口|落地|迭代|端到端|基线|采用率|沉淀|资产|组织能力|平台治理|长效机制|复用|回归验证/);
+  it("covers the requested general workplace AI topics", () => {
+    const visibleText = questions.flatMap((question) => [question.category, question.prompt, ...question.options.map((option) => option.label)]).join(" ");
+
+    expect(visibleText).toMatch(/聚合平台/);
+    expect(visibleText).toMatch(/模型选择/);
+    expect(visibleText).toMatch(/知识库/);
+    expect(visibleText).toMatch(/工作流/);
+    expect(visibleText).toMatch(/智能体/);
+    expect(visibleText).toMatch(/权限/);
   });
 
-  it("rejects an imported answer whose length is not exactly 18 characters", () => {
-    const invalidMarkdown = serializeQuestionMarkdown(questions.map((question) => question.id === "q1"
+  it("rejects an imported answer outside the natural length range", () => {
+    const invalidMarkdown = serializeQuestionMarkdown(questions.map((question) => question.id === "q001"
       ? { ...question, options: question.options.map((option, index) => index === 0 ? { ...option, label: "答案太短" } : option) }
       : question));
 
-    expect(() => parseQuestionMarkdown(invalidMarkdown)).toThrow("答案必须统一为 18 个字符");
+    expect(() => parseQuestionMarkdown(invalidMarkdown)).toThrow("12–30 个字符");
   });
 
-  it("keeps score keys in varied answer positions after serialization", () => {
-    const scoreOrders = questions.map((question) => question.options.map((option) => option.score).join(""));
-    const restoredOrders = parseQuestionMarkdown(defaultQuestionMarkdown)
-      .map((question) => question.options.map((option) => option.score).join(""));
-
-    expect(scoreOrders).not.toContain("0123");
-    expect(scoreOrders).not.toContain("3210");
-    expect(new Set(scoreOrders).size).toBeGreaterThanOrEqual(8);
-    expect(restoredOrders).toEqual(scoreOrders);
-    expect(questions.every((question) => question.options.at(-1)?.score !== 3)).toBe(true);
-  });
-
-  it("rejects an imported question whose scores follow the visible order", () => {
-    const orderedMarkdown = serializeQuestionMarkdown(questions.map((question) => question.id === "q1"
-      ? { ...question, options: [...question.options].sort((left, right) => left.score - right.score) }
+  it("rejects duplicate prompts and prohibited option wording", () => {
+    const duplicatePrompt = serializeQuestionMarkdown(questions.map((question, index) => index === 1 ? { ...question, prompt: questions[0].prompt } : question));
+    const prohibitedWording = serializeQuestionMarkdown(questions.map((question, index) => index === 0
+      ? { ...question, options: question.options.map((option, optionIndex) => optionIndex === 0 ? { ...option, label: "直接采用生成内容再交给负责人复核" } : option) }
       : question));
 
-    expect(() => parseQuestionMarkdown(orderedMarkdown)).toThrow("分值顺序过于明显");
-  });
-
-  it("rejects an imported question whose highest score is last", () => {
-    const highestLastMarkdown = serializeQuestionMarkdown(questions.map((question) => question.id === "q1"
-      ? { ...question, options: [...question.options].sort((left, right) => left.score === 3 ? 1 : right.score === 3 ? -1 : 0) }
-      : question));
-
-    expect(() => parseQuestionMarkdown(highestLastMarkdown)).toThrow("最高分选项不能放在最后");
-  });
-
-  it("rejects a score-ordered length pattern in imported questions", () => {
-    const biasedMarkdown = serializeQuestionMarkdown(questions.map((question) => question.id === "q1"
-      ? {
-        ...question,
-        options: question.options.map((option) => ({ ...option, label: `回答${"很长的文字".repeat(option.score + 1)}` }))
-      }
-      : question));
-    expect(() => parseQuestionMarkdown(biasedMarkdown)).toThrow("答案必须统一为 18 个字符");
+    expect(() => parseQuestionMarkdown(duplicatePrompt)).toThrow("题干不能重复");
+    expect(() => parseQuestionMarkdown(prohibitedWording)).toThrow("包含容易提示分值的表达");
   });
 });

@@ -2,6 +2,7 @@ import { Bell, ChevronDown, LockKeyhole, LogOut, Menu, Search } from "lucide-rea
 import { FormEvent, useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import AdminNav from "../components/AdminNav";
+import { assessmentRepository } from "../domain/store";
 import AdminOverviewPage from "./AdminOverviewPage";
 import CampaignsPage from "./CampaignsPage";
 import ExportsPage from "./ExportsPage";
@@ -16,7 +17,14 @@ export default function AdminLayout() {
     if (import.meta.env.MODE === "test") return;
     fetch("/api/admin/session", { headers: { Accept: "application/json" } })
       .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((body: { authenticated?: boolean }) => setAuthentication(body.authenticated ? "signed-in" : "signed-out"))
+      .then(async (body: { authenticated?: boolean }) => {
+        if (!body.authenticated) {
+          setAuthentication("signed-out");
+          return;
+        }
+        await assessmentRepository.initialize({ persistMigration: true });
+        setAuthentication("signed-in");
+      })
       .catch(() => setAuthentication("signed-out"));
   }, []);
   if (authentication === "checking") return <main className="startup-error"><h1>正在验证管理员身份</h1><p>请稍候。</p></main>;
@@ -37,6 +45,7 @@ function AdminLogin({ onSignedIn }: { onSignedIn: () => void }) {
       const response = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
       const body = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(body.error || "登录失败，请稍后重试。");
+      await assessmentRepository.initialize({ persistMigration: true });
       onSignedIn();
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : "登录失败，请稍后重试。");
