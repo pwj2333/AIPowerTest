@@ -148,7 +148,7 @@ function normalizeState(stored: Partial<AssessmentState>): AssessmentState {
   } catch {
     validCurrentBank = false;
   }
-  if (isKnownDefaultVersion || (state.questionBank.version === currentQuestionBankVersion && !validCurrentBank)) useDefaultQuestionBank();
+  if (isKnownDefaultVersion || !validCurrentBank) useDefaultQuestionBank();
   Object.values(state.drafts).forEach((draft) => {
     if (draft.questionVersion !== state.questionBank.version) draft.resetRequired = true;
   });

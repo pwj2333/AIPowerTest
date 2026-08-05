@@ -48,6 +48,23 @@ describe("assessment repository", () => {
     expect(repository.getQuestionBank().markdown).toBe(defaultQuestionMarkdown);
   });
 
+  it("migrates an old twenty-question bank before the admin page reads it", () => {
+    const legacyMarkdown = ["# Legacy question bank", ...Array.from({ length: 20 }, (_, index) => `## q${index + 1}`)].join("\n");
+    localStorage.setItem("legacy-question-bank-test", JSON.stringify({
+      campaigns: [{ id: "campaign-legacy", status: "open", questionVersion: "v2.2" }],
+      participants: [],
+      drafts: {},
+      results: [],
+      questionBank: { version: "v2.2", markdown: legacyMarkdown, updatedAt: "2026-01-01T00:00:00.000Z" }
+    }));
+    const repository = createAssessmentRepository("legacy-question-bank-test");
+
+    expect(() => repository.getQuestionBank()).not.toThrow();
+    expect(repository.getQuestionBank().version).toBe("v3.0");
+    expect(repository.getQuestionBank().questions).toHaveLength(100);
+    expect(repository.listCampaigns()[0].questionVersion).toBe("v3.0");
+  });
+
   it("imports valid roster rows and reports duplicates without storing them", () => {
     const repository = createAssessmentRepository("import-test");
     const campaign = repository.createCampaign({ name: "2026 年 AI 能力测评" });
