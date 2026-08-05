@@ -1,12 +1,22 @@
-import { ArrowLeft, ArrowRight, CheckCircle2, Clock3, LockKeyhole, RotateCcw, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Clock3, LockKeyhole, RotateCcw, ShieldCheck, Sparkles, Trophy, UserRound } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import QuestionCard from "../components/QuestionCard";
-import { evaluateStage, selectStageQuestions } from "../domain/scoring";
-import { getDimensionLabel } from "../domain/questions";
+import { evaluateStage, orderStageQuestionsForDisplay, selectStageQuestions } from "../domain/scoring";
+import { getDimensionLabel, getGrade } from "../domain/questions";
 import { assessmentRepository, type AssessmentDraft, type Participant } from "../domain/store";
 
 const verificationKey = (token: string) => `assessment-identity:${token}`;
+const displayOrderKey = (token: string, version: string) => `assessment-display-order:${token}:${version}`;
+
+function makeDisplaySeed(token: string, version: string, forceNew = false): string {
+  const key = displayOrderKey(token, version);
+  const stored = forceNew ? "" : sessionStorage.getItem(key);
+  if (stored) return stored;
+  const generated = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  sessionStorage.setItem(key, generated);
+  return generated;
+}
 
 export default function AssessmentPage() {
   const { token = "" } = useParams();
@@ -23,6 +33,12 @@ export default function AssessmentPage() {
   const [current, setCurrent] = useState(0);
   const [advance, setAdvance] = useState(false);
   const [error, setError] = useState("");
+  const [displaySeed, setDisplaySeed] = useState(() => sessionStorage.getItem(displayOrderKey(token, questionBank.version)) ?? "");
+
+  useEffect(() => {
+    if (!started || !participant || displaySeed) return;
+    setDisplaySeed(makeDisplaySeed(participant.token, questionBank.version));
+  }, [displaySeed, participant, questionBank.version, started]);
 
   useEffect(() => {
     if (verified && participant && assessmentRepository.getResult(participant.id)) navigate(`/result/${participant.token}`, { replace: true });
@@ -43,6 +59,7 @@ export default function AssessmentPage() {
   if (!verified) return <IdentityGate token={token} onVerified={() => { sessionStorage.setItem(verificationKey(token), "verified"); setVerified(true); }} />;
   if (!started) return <AssessmentWelcome participant={participant} questionCount={5} resetRequired={Boolean(existingDraft?.resetRequired)} onStart={() => {
     const now = Date.now();
+    setDisplaySeed(makeDisplaySeed(participant.token, questionBank.version, !draftIsFresh));
     const draft: AssessmentDraft = { questionVersion: questionBank.version, activeLevel: 1, startedAt: new Date(now).toISOString(), answers: {} };
     setAnswers({});
     setActiveLevel(1);
@@ -61,7 +78,8 @@ export default function AssessmentPage() {
     : stageEvaluation.status === "passed" || stageEvaluation.status === "failed"
       ? 3
       : Math.min(3, Math.max(1, answeredInStage + 1));
-  const visibleQuestions = stageQuestions.slice(0, visibleCount);
+  const displayQuestions = orderStageQuestionsForDisplay(stageQuestions, `${displaySeed || seed}:L${activeLevel}`);
+  const visibleQuestions = displayQuestions.slice(0, visibleCount);
   const question = visibleQuestions[Math.min(current, visibleQuestions.length - 1)];
 
   const saveDraft = (nextAnswers: Record<string, string>, level = activeLevel) => {
@@ -122,7 +140,7 @@ export default function AssessmentPage() {
         <nav className="question-map" aria-label="本关题目轨迹">
           {visibleQuestions.map((item, index) => <button className={`${index === current ? "is-current" : ""} ${answers[item.id] ? "is-answered" : ""}`} type="button" key={item.id} onClick={() => setCurrent(index)} aria-label={`第 ${index + 1} 题${answers[item.id] ? "，已作答" : "，未作答"}`} aria-current={index === current ? "step" : undefined}>{answers[item.id] ? <CheckCircle2 size={13} /> : index + 1}</button>)}
         </nav>
-        <div className="question-stage" key={question.id}><QuestionCard question={question} selectedOption={answers[question.id]} onSelect={selectAnswer} seed={seed} /></div>
+        <div className="question-stage" key={question.id}><QuestionCard question={question} selectedOption={answers[question.id]} onSelect={selectAnswer} seed={`${displaySeed || seed}:L${activeLevel}`} /></div>
         <div className="selection-status" aria-live="polite">{answers[question.id] ? <><CheckCircle2 size={15} /> 已记录选择，可继续或返回修改</> : <><span className="selection-pulse" /> 请选择最接近你日常做法的一项</>}</div>
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="question-actions"><button className="button button-ghost" type="button" onClick={() => setCurrent((index) => Math.max(0, index - 1))} disabled={current === 0}><ArrowLeft size={17} /> 上一题</button>{current === visibleQuestions.length - 1 ? <button className="button button-primary" type="button" onClick={submitStage} disabled={!answers[question.id]}><CheckCircle2 size={17} /> {stageEvaluation.status === "failed" ? "结束测评" : activeLevel === 8 && stageEvaluation.status === "passed" ? "完成测评" : "提交本关"}</button> : <button className="button button-primary" type="button" onClick={() => answers[question.id] && setCurrent((index) => index + 1)} disabled={!answers[question.id]}>下一题<ArrowRight size={17} /></button>}</div>
@@ -132,8 +150,10 @@ export default function AssessmentPage() {
   );
 }
 
-function StageAdvance({ level, onContinue }: { level: number; onContinue: () => void }) {
-  return <main className="welcome-page page-width"><section className="welcome-card is-verified"><div className="verified-line"><CheckCircle2 size={17} /> L{level} 已通过</div><span className="eyebrow">NEXT STAGE</span><h1>继续挑战 L{level + 1}</h1><p className="welcome-lead">本次结果会在全部测评结束后统一保存。下一关仍会为你稳定抽取 5 道题，先答 3 题再根据表现决定是否追加。</p><button className="button button-primary button-wide" type="button" onClick={onContinue}>进入 L{level + 1}<ArrowRight size={18} /></button></section></main>;
+export function StageAdvance({ level, onContinue }: { level: number; onContinue: () => void }) {
+  const grade = getGrade(level);
+  const confetti = Array.from({ length: 10 });
+  return <main className="welcome-page page-width"><section className="welcome-card is-verified stage-advance-card" role="status" aria-live="polite"><div className="stage-advance-celebration" aria-hidden="true"><div className="stage-advance-burst"><Trophy size={30} /><Sparkles size={17} /></div>{confetti.map((_, index) => <span className="stage-advance-confetti" key={index} style={{ "--confetti-angle": `${index * 36}deg`, "--confetti-delay": `${index * 45}ms` } as React.CSSProperties} />)}</div><div className="verified-line"><CheckCircle2 size={17} /> L{level} 已通过</div><span className="eyebrow">STAGE CLEARED</span><h1>恭喜你达到 L{level} · {grade.name}</h1><p className="welcome-lead">本关表现已达标，继续挑战下一关。最终等级会在全部测评结束后统一生成。</p><button className="button button-primary button-wide" type="button" onClick={onContinue}>继续闯关 L{level + 1}<ArrowRight size={18} /></button></section></main>;
 }
 
 function IdentityGate({ token, onVerified }: { token: string; onVerified: () => void }) {

@@ -24,6 +24,12 @@ export function selectStageQuestions(questions: AssessmentQuestion[], level: num
   return stableOrder(questions.filter((question) => question.level === level), `${seed}:L${level}`).slice(0, 5);
 }
 
+export function orderStageQuestionsForDisplay(stage: AssessmentQuestion[], seed: string): AssessmentQuestion[] {
+  const firstQuestions = stableOrder(stage.slice(0, 3), `${seed}:display:first`);
+  const extensionQuestions = stableOrder(stage.slice(3), `${seed}:display:extension`);
+  return [...firstQuestions, ...extensionQuestions];
+}
+
 export type StageStatus = "incomplete" | "needs-more" | "passed" | "failed";
 
 export interface StageEvaluation {

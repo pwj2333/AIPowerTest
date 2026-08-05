@@ -38,7 +38,10 @@ describe("employee adaptive assessment flow", () => {
     }
     await user.click(screen.getByRole("button", { name: "提交本关" }));
     expect(screen.getByText("L1 已通过")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "进入 L2" }));
+    expect(screen.getByRole("status")).toHaveTextContent("L1");
+    expect(screen.getByText(/继续闯关/)).toBeInTheDocument();
+    expect(document.querySelector(".stage-advance-celebration")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "继续闯关 L2" }));
 
     for (let questionNumber = 1; questionNumber <= 3; questionNumber += 1) {
       fireEvent.click(screen.getByTestId("option-0"));

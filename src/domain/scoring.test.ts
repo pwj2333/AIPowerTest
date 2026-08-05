@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeQuestionItems, analyzeScoreDistribution, evaluateStage, scoreAdaptiveAssessment, scoreAssessment, selectStageQuestions } from "./scoring";
+import { analyzeQuestionItems, analyzeScoreDistribution, evaluateStage, orderStageQuestionsForDisplay, scoreAdaptiveAssessment, scoreAssessment, selectStageQuestions } from "./scoring";
 import { questions } from "./questions";
 import type { AssessmentQuestion } from "./types";
 
@@ -75,6 +75,17 @@ describe("adaptive stage selection", () => {
     expect(selected.every((question) => question.level === 3)).toBe(true);
     expect(selectStageQuestions(pool, 3, "participant-a:v3.0")).toEqual(selected);
     expect(selectStageQuestions(pool, 3, "participant-b:v3.0").map((question) => question.id)).not.toEqual(selected.map((question) => question.id));
+  });
+
+  it("randomizes the visible order without changing the adaptive scoring slots", () => {
+    const stage = selectStageQuestions(questionPool(), 3, "participant-a:v3.0");
+    const displayed = orderStageQuestionsForDisplay(stage, "assessment-run-a");
+
+    expect(displayed).toHaveLength(stage.length);
+    expect(new Set(displayed.map((question) => question.id))).toEqual(new Set(stage.map((question) => question.id)));
+    expect(new Set(displayed.slice(0, 3).map((question) => question.id))).toEqual(new Set(stage.slice(0, 3).map((question) => question.id)));
+    expect(orderStageQuestionsForDisplay(stage, "assessment-run-a")).toEqual(displayed);
+    expect(orderStageQuestionsForDisplay(stage, "assessment-run-b").map((question) => question.id)).not.toEqual(displayed.map((question) => question.id));
   });
 
   it("decides clear three-answer stages and extends mixed evidence to five", () => {
