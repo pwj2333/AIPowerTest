@@ -57,19 +57,27 @@ describe("administrator workspace", () => {
     expect(assessmentRepository.getQuestionBank().questions[0].prompt).toContain("正式场景");
   });
 
-  it("shows preview options in shuffled order instead of score order", () => {
+  it("shows preview options in source order with their real scores", () => {
     const { container } = render(
       <MemoryRouter initialEntries={["/admin/question-bank"]}>
         <App />
       </MemoryRouter>,
     );
 
-    const scores = Array.from(container.querySelectorAll(".question-bank-detail ol li b"))
+    const bank = assessmentRepository.getQuestionBank();
+    const firstQuestion = bank.questions[0];
+    const preview = container.querySelector(".question-bank-detail");
+    const scores = Array.from(preview?.querySelectorAll("ol li b") ?? [])
       .map((node) => Number(node.textContent?.match(/\d+/)?.[0]));
+    const labels = Array.from(preview?.querySelectorAll("ol li span") ?? [])
+      .map((node) => node.textContent);
 
     expect(scores).toHaveLength(4);
-    expect(scores).not.toEqual([0, 1, 2, 3]);
-    expect(scores.at(-1)).not.toBe(3);
+    expect(scores).toEqual([0, 1, 2, 3]);
+    expect(labels).toEqual(firstQuestion.options
+      .slice()
+      .sort((left, right) => left.score - right.score)
+      .map((option) => option.label));
   });
 
   it("copies people between campaigns and exposes a roster export", async () => {

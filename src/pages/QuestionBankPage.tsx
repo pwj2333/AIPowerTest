@@ -1,6 +1,5 @@
 import { AlertTriangle, CheckCircle2, ChevronDown, Download, FileQuestion, RotateCcw, Save, Upload } from "lucide-react";
 import { ChangeEvent, useMemo, useState } from "react";
-import { stableOptionOrder } from "../components/QuestionCard";
 import { defaultQuestionMarkdown, getDimensionLabel, parseQuestionMarkdown } from "../domain/questions";
 import { analyzeQuestionItems, type ItemQualityStatus } from "../domain/scoring";
 import { assessmentRepository } from "../domain/store";
@@ -17,7 +16,6 @@ export default function QuestionBankPage() {
   const [bank, setBank] = useState(() => assessmentRepository.getQuestionBank());
   const [source, setSource] = useState(bank.markdown);
   const [openQuestion, setOpenQuestion] = useState(bank.questions[0]?.id ?? "");
-  const [previewSeed] = useState(() => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const [message, setMessage] = useState("");
   const parsed = useMemo(() => {
     try {
@@ -86,7 +84,7 @@ export default function QuestionBankPage() {
       </article>
       <article className="admin-panel question-preview-panel">
         <div className="panel-heading"><div><span className="section-kicker">LIVE PREVIEW</span><h2>题目预览</h2></div><FileQuestion size={20} className="heading-icon" /></div>
-        {parsed.error ? <div className="preview-empty"><AlertTriangle size={22} /><span>修正格式后显示预览</span></div> : <div className="question-list">{parsed.questions.map((question, index) => <div className={`question-bank-item ${openQuestion === question.id ? "is-open" : ""}`} key={question.id}><button type="button" onClick={() => setOpenQuestion(openQuestion === question.id ? "" : question.id)}><span className="question-number">{String(index + 1).padStart(2, "0")}</span><span><strong>L{question.level} · {question.category}</strong><small>{getDimensionLabel(question.dimension)}</small></span><ChevronDown size={16} /></button>{openQuestion === question.id && <div className="question-bank-detail"><p>{question.prompt}</p><ol>{stableOptionOrder(question, previewSeed).map((option) => <li key={option.id}><span>{option.label}</span><b>{option.score} 分</b></li>)}</ol></div>}</div>)}</div>}
+        {parsed.error ? <div className="preview-empty"><AlertTriangle size={22} /><span>修正格式后显示预览</span></div> : <div className="question-list">{parsed.questions.map((question, index) => <div className={`question-bank-item ${openQuestion === question.id ? "is-open" : ""}`} key={question.id}><button type="button" onClick={() => setOpenQuestion(openQuestion === question.id ? "" : question.id)}><span className="question-number">{String(index + 1).padStart(2, "0")}</span><span><strong>L{question.level} · {question.category}</strong><small>{getDimensionLabel(question.dimension)}</small></span><ChevronDown size={16} /></button>{openQuestion === question.id && <div className="question-bank-detail"><p>{question.prompt}</p><ol>{[...question.options].sort((left, right) => left.score - right.score).map((option) => <li key={option.id}><span>{option.label}</span><b>{option.score} 分</b></li>)}</ol></div>}</div>)}</div>}
       </article>
     </section>
     <section className="calibration-note"><div><span className="section-kicker">CALIBRATION</span><h2>分布需要真实样本校准</h2></div><p>当前采用连续总分与固定等级切点，避免单题门槛造成低等级堆积。达到 30 份有效答卷后，再根据偏度、离散度和题目区分度调整切点；系统不会为了得到钟形曲线而改写个人分数。</p></section>
