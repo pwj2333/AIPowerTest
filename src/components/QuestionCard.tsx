@@ -7,7 +7,7 @@ interface QuestionCardProps {
   seed: string;
 }
 
-function stableOptionOrder(question: AssessmentQuestion, seed: string) {
+export function stableOptionOrder(question: AssessmentQuestion, seed: string) {
   const ordered = [...question.options];
   let state = [...`${seed}:${question.id}`].reduce((total, character) => ((total * 31) + character.charCodeAt(0)) >>> 0, 7);
   for (let index = ordered.length - 1; index > 0; index -= 1) {

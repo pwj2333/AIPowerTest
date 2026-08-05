@@ -57,6 +57,21 @@ describe("administrator workspace", () => {
     expect(assessmentRepository.getQuestionBank().questions[0].prompt).toContain("正式场景");
   });
 
+  it("shows preview options in shuffled order instead of score order", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/admin/question-bank"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const scores = Array.from(container.querySelectorAll(".question-bank-detail ol li b"))
+      .map((node) => Number(node.textContent?.match(/\d+/)?.[0]));
+
+    expect(scores).toHaveLength(4);
+    expect(scores).not.toEqual([0, 1, 2, 3]);
+    expect(scores.at(-1)).not.toBe(3);
+  });
+
   it("copies people between campaigns and exposes a roster export", async () => {
     const source = assessmentRepository.createCampaign({ name: "Source" });
     const target = assessmentRepository.createCampaign({ name: "Target" });
