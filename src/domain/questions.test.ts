@@ -53,13 +53,22 @@ describe("Markdown question bank", () => {
 
   it("covers the requested general workplace AI topics", () => {
     const visibleText = questions.flatMap((question) => [question.category, question.prompt, ...question.options.map((option) => option.label)]).join(" ");
+    const beginnerText = questions
+      .filter((question) => question.level <= 4)
+      .flatMap((question) => [question.category, question.prompt, ...question.options.map((option) => option.label)])
+      .join(" ");
 
     expect(visibleText).toMatch(/多个 AI/);
     expect(visibleText).toMatch(/AI 工具/);
     expect(visibleText).toMatch(/公司资料库/);
-    expect(visibleText).toMatch(/固定步骤/);
     expect(visibleText).toMatch(/AI 助手/);
     expect(visibleText).toMatch(/权限/);
+    expect(beginnerText).toMatch(/WorkBuddy/);
+    expect(beginnerText).toMatch(/付费/);
+    expect(beginnerText).toMatch(/国外大模型/);
+    expect(beginnerText).toMatch(/国内大模型/);
+    expect(beginnerText).toMatch(/AI 可以帮忙解决/);
+    expect(beginnerText).not.toMatch(/聚合平台|模型路由|检索增强|多模态|API|知识库|工作流|智能体|治理|审计/);
     expect(visibleText).not.toMatch(/聚合平台|模型路由|检索增强|多模态|API|项目组合|数据治理|审计/);
   });
 
