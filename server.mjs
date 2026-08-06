@@ -236,29 +236,13 @@ function expectedAdaptiveSubmission(participant, campaign, questionBank, submitt
     const stage = stableAssessmentOrder(questions.filter((question) => question.level === stageLevel), `${seed}:L${stageLevel}`).slice(0, 5);
     if (stage.length < 5) throw new Error("incomplete question bank");
     const scoreFor = (question) => question.options.find((option) => option.id === submitted.answers[question.id])?.score;
-    const firstScores = stage.slice(0, 3).map(scoreFor);
-    if (firstScores.some((score) => score === undefined)) throw new Error("incomplete adaptive path");
-    const firstTotal = firstScores.reduce((total, score) => total + score, 0);
-    let questionCount;
-    let status;
-    let totalScore;
-    if (firstScores.every((score) => score >= 2)) {
-      questionCount = 3;
-      status = "passed";
-      totalScore = firstTotal;
-    } else if (firstScores.every((score) => score <= 1)) {
-      questionCount = 3;
-      status = "failed";
-      totalScore = firstTotal;
-    } else {
-      const allScores = stage.map(scoreFor);
-      if (allScores.some((score) => score === undefined)) throw new Error("incomplete adaptive path");
-      questionCount = 5;
-      totalScore = allScores.reduce((total, score) => total + score, 0);
-      status = totalScore >= 10 ? "passed" : "failed";
-    }
-    const questionIds = stage.slice(0, questionCount).map((question) => question.id);
-    attempted.push(...stage.slice(0, questionCount));
+    const scores = stage.map(scoreFor);
+    if (scores.some((score) => score === undefined)) throw new Error("incomplete adaptive path");
+    const questionCount = 5;
+    const totalScore = scores.reduce((total, score) => total + score, 0);
+    const status = totalScore >= 10 ? "passed" : "failed";
+    const questionIds = stage.map((question) => question.id);
+    attempted.push(...stage);
     stageResults.push({ level: stageLevel, questionIds, questionCount, totalScore, status });
     if (status === "failed") break;
     level = stageLevel;

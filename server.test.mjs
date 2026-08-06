@@ -26,9 +26,9 @@ function adaptiveFixture(participantId = "p1", version = "v3.0") {
   ].join("\n")))].join("\n\n");
   const answers = {};
   const stageResults = idsByLevel.map((ids, levelIndex) => {
-    const questionIds = stableOrder(ids, `${participantId}:${version}:L${levelIndex + 1}`).slice(0, 3);
+    const questionIds = stableOrder(ids, `${participantId}:${version}:L${levelIndex + 1}`).slice(0, 5);
     questionIds.forEach((id) => { answers[id] = `${id}-option-3`; });
-    return { level: levelIndex + 1, questionIds, questionCount: 3, totalScore: 9, status: "passed" };
+    return { level: levelIndex + 1, questionIds, questionCount: 5, totalScore: 15, status: "passed" };
   });
   const levelAverages = Object.fromEntries(stageResults.map((stage) => [stage.level, 3]));
   return {
@@ -42,13 +42,13 @@ function adaptiveFixture(participantId = "p1", version = "v3.0") {
       result: {
         level: 8,
         grade: { level: 8, code: "L8", name: "Level 8", capability: "capability", color: "#000", tasks: ["task 1", "task 2", "task 3"] },
-        totalScore: 72,
-        maxScore: 72,
+        totalScore: 120,
+        maxScore: 120,
         scorePercent: 100,
         levelAverages,
         dimensionScores: { office: 100, scenario: null, workflow: null, innovation: null },
         weakDimensions: ["office"],
-        answeredQuestionCount: 24,
+        answeredQuestionCount: 40,
         stoppedAtLevel: 8,
         stageResults,
         confidence: "high",
