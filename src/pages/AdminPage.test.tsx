@@ -126,7 +126,7 @@ describe("administrator workspace", () => {
     const [person] = assessmentRepository.importParticipants(second.id, [{ name: "Alice", department: "Sales", position: "Lead" }]).imported;
     const bank = assessmentRepository.getQuestionBank();
     const stage = selectStageQuestions(bank.questions, 1, `${person.id}:${bank.version}`);
-    const answers = Object.fromEntries(stage.slice(0, 3).map((question) => [question.id, `${question.id}-option-0`]));
+    const answers = Object.fromEntries(stage.map((question) => [question.id, `${question.id}-option-0`]));
     assessmentRepository.submitAssessment(person.id, answers, 60);
 
     render(

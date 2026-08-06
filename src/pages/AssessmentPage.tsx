@@ -49,7 +49,7 @@ export default function AssessmentPage() {
     const stage = selectStageQuestions(questionBank.questions, activeLevel, `${participant.id}:${questionBank.version}`);
     const evaluation = evaluateStage(stage, answers);
     const answered = stage.filter((question) => Boolean(answers[question.id])).length;
-    const count = evaluation.status === "needs-more" ? 5 : evaluation.status === "passed" || evaluation.status === "failed" ? 3 : Math.min(3, Math.max(1, answered + 1));
+    const count = Math.min(5, Math.max(1, answered + 1));
     if (current >= count) setCurrent(Math.max(0, count - 1));
   }, [activeLevel, answers, current, participant, questionBank.questions, questionBank.version]);
 
@@ -73,11 +73,7 @@ export default function AssessmentPage() {
   const stageQuestions = selectStageQuestions(questionBank.questions, activeLevel, seed);
   const stageEvaluation = evaluateStage(stageQuestions, answers);
   const answeredInStage = stageQuestions.filter((question) => Boolean(answers[question.id])).length;
-  const visibleCount = stageEvaluation.status === "needs-more"
-    ? 5
-    : stageEvaluation.status === "passed" || stageEvaluation.status === "failed"
-      ? 3
-      : Math.min(3, Math.max(1, answeredInStage + 1));
+  const visibleCount = Math.min(5, Math.max(1, answeredInStage + 1));
   const displayQuestions = orderStageQuestionsForDisplay(stageQuestions, `${displaySeed || seed}:L${activeLevel}`);
   const visibleQuestions = displayQuestions.slice(0, visibleCount);
   const question = visibleQuestions[Math.min(current, visibleQuestions.length - 1)];
@@ -100,8 +96,8 @@ export default function AssessmentPage() {
   };
 
   const submitStage = async () => {
-    if (stageEvaluation.status === "incomplete" || stageEvaluation.status === "needs-more") {
-      setError(stageEvaluation.status === "needs-more" ? "请完成第 4、5 题后再提交本关。" : "请先完成本关前 3 题。");
+    if (stageEvaluation.status === "incomplete") {
+      setError("请完成本关 5 道题后再提交。");
       return;
     }
     const acceptedIds = new Set(stageQuestions.slice(0, stageEvaluation.questionCount).map((question) => question.id));
@@ -144,7 +140,7 @@ export default function AssessmentPage() {
         <div className="selection-status" aria-live="polite">{answers[question.id] ? <><CheckCircle2 size={15} /> 已记录选择，可继续或返回修改</> : <><span className="selection-pulse" /> 请选择最接近你日常做法的一项</>}</div>
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="question-actions"><button className="button button-ghost" type="button" onClick={() => setCurrent((index) => Math.max(0, index - 1))} disabled={current === 0}><ArrowLeft size={17} /> 上一题</button>{current === visibleQuestions.length - 1 ? <button className="button button-primary" type="button" onClick={submitStage} disabled={!answers[question.id]}><CheckCircle2 size={17} /> {stageEvaluation.status === "failed" ? "结束测评" : activeLevel === 8 && stageEvaluation.status === "passed" ? "完成测评" : "提交本关"}</button> : <button className="button button-primary" type="button" onClick={() => answers[question.id] && setCurrent((index) => index + 1)} disabled={!answers[question.id]}>下一题<ArrowRight size={17} /></button>}</div>
-        <p className="assessment-footnote"><LockKeyhole size={14} /> 本关先答 3 题；答案呈现混合情况时会追加 2 题。提交前可以返回修改。</p>
+        <p className="assessment-footnote"><LockKeyhole size={14} /> 每个等级固定 5 道题，题目从本等级题库随机抽取。提交前可以返回修改。</p>
       </section>
     </main>
   );
@@ -179,7 +175,7 @@ function IdentityGate({ token, onVerified }: { token: string; onVerified: () => 
 }
 
 function AssessmentWelcome({ participant, questionCount, resetRequired, onStart }: { participant: Participant; questionCount: number; resetRequired: boolean; onStart: () => void }) {
-  return <main className="welcome-page page-width"><header className="assessment-header"><Link to="/" className="brand-lockup"><span className="brand-mark">AI</span><span><strong>AI 能力认证</strong><small>员工测评</small></span></Link><span className="assessment-person"><ShieldCheck size={14} /> 身份已匹配</span></header><section className="welcome-card is-verified"><div className="verified-line"><CheckCircle2 size={17} /> 姓名核验成功</div><span className="eyebrow">PERSONAL GROWTH ASSESSMENT</span><h1>你好，{participant.name}</h1><p className="welcome-lead">这份测评关注你在真实工作情境中的取舍，系统会从 L1 开始，根据每关表现决定是否继续挑战。</p>{resetRequired && <p className="form-error" role="alert">题库已升级，上一份未完成草稿需要重新开始。</p>}<div className="welcome-info"><div><Clock3 size={18} /><span><strong>约 3–12 分钟</strong><small>每关最多 {questionCount} 道工作情境题</small></span></div><div><LockKeyhole size={18} /><span><strong>最多 8 个等级</strong><small>首次未通过即结束</small></span></div><div><RotateCcw size={18} /><span><strong>可返回修改</strong><small>每关提交前答案都可调整</small></span></div></div><div className="identity-line"><span>部门</span><strong>{participant.department}</strong><span>岗位</span><strong>{participant.position}</strong></div><button className="button button-primary button-wide" type="button" onClick={onStart}>开始 L1 测评<ArrowRight size={18} /></button></section></main>;
+  return <main className="welcome-page page-width"><header className="assessment-header"><Link to="/" className="brand-lockup"><span className="brand-mark">AI</span><span><strong>AI 能力认证</strong><small>员工测评</small></span></Link><span className="assessment-person"><ShieldCheck size={14} /> 身份已匹配</span></header><section className="welcome-card is-verified"><div className="verified-line"><CheckCircle2 size={17} /> 姓名核验成功</div><span className="eyebrow">PERSONAL GROWTH ASSESSMENT</span><h1>你好，{participant.name}</h1><p className="welcome-lead">这份测评关注你在真实工作情境中的取舍，系统会从 L1 开始，根据每关表现决定是否继续挑战。</p>{resetRequired && <p className="form-error" role="alert">题库已升级，上一份未完成草稿需要重新开始。</p>}<div className="welcome-info"><div><Clock3 size={18} /><span><strong>约 3–12 分钟</strong><small>每关 {questionCount} 道工作情境题</small></span></div><div><LockKeyhole size={18} /><span><strong>最多 8 个等级</strong><small>首次未通过即结束</small></span></div><div><RotateCcw size={18} /><span><strong>可返回修改</strong><small>每关提交前答案都可调整</small></span></div></div><div className="identity-line"><span>部门</span><strong>{participant.department}</strong><span>岗位</span><strong>{participant.position}</strong></div><button className="button button-primary button-wide" type="button" onClick={onStart}>开始 L1 测评<ArrowRight size={18} /></button></section></main>;
 }
 
 function InvalidLink({ message = "这条测评链接无效或已失效。" }: { message?: string }) {

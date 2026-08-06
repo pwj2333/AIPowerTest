@@ -12,7 +12,7 @@ describe("employee adaptive assessment flow", () => {
     assessmentRepository.reset();
   });
 
-  it("passes one three-question stage, stops at the next failure, and shows the result", async () => {
+  it("passes one five-question stage, stops at the next failure, and shows the result", async () => {
     const user = userEvent.setup();
     const campaign = assessmentRepository.createCampaign({ name: "测试批次" });
     const [participant] = assessmentRepository.importParticipants(campaign.id, [
@@ -32,9 +32,9 @@ describe("employee adaptive assessment flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "上一题" }));
     expect(screen.getAllByRole("radio").map((option) => option.getAttribute("data-testid"))).toEqual(firstQuestionOrder);
 
-    for (let questionNumber = 1; questionNumber <= 3; questionNumber += 1) {
+    for (let questionNumber = 1; questionNumber <= 5; questionNumber += 1) {
       fireEvent.click(screen.getByTestId("option-3"));
-      if (questionNumber < 3) fireEvent.click(screen.getByRole("button", { name: "下一题" }));
+      if (questionNumber < 5) fireEvent.click(screen.getByRole("button", { name: "下一题" }));
     }
     await user.click(screen.getByRole("button", { name: "提交本关" }));
     expect(screen.getByText("L1 已通过")).toBeInTheDocument();
@@ -43,13 +43,13 @@ describe("employee adaptive assessment flow", () => {
     expect(document.querySelector(".stage-advance-celebration")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "继续闯关 L2" }));
 
-    for (let questionNumber = 1; questionNumber <= 3; questionNumber += 1) {
+    for (let questionNumber = 1; questionNumber <= 5; questionNumber += 1) {
       fireEvent.click(screen.getByTestId("option-0"));
-      if (questionNumber < 3) fireEvent.click(screen.getByRole("button", { name: "下一题" }));
+      if (questionNumber < 5) fireEvent.click(screen.getByRole("button", { name: "下一题" }));
     }
     await user.click(screen.getByRole("button", { name: "结束测评" }));
 
-    expect(await screen.findByText(/实际答题 6 题/)).toBeInTheDocument();
+    expect(await screen.findByText(/实际答题 10 题/)).toBeInTheDocument();
     expect(screen.getByText(/最高通过 L1/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "逐关结果" })).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);

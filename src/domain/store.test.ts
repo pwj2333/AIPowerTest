@@ -7,7 +7,7 @@ import type { AssessmentDraft } from "./store";
 function stageAnswers(repository: ReturnType<typeof createAssessmentRepository>, participantId: string, level: number, score: number) {
   const bank = repository.getQuestionBank();
   const questions = selectStageQuestions(bank.questions, level, `${participantId}:${bank.version}`);
-  return Object.fromEntries(questions.slice(0, 3).map((question) => [question.id, `${question.id}-option-${score}`]));
+  return Object.fromEntries(questions.map((question) => [question.id, `${question.id}-option-${score}`]));
 }
 
 describe("assessment repository", () => {
@@ -123,7 +123,7 @@ describe("assessment repository", () => {
     const [participant] = repository.importParticipants(campaign.id, [{ name: "Alice", department: "Sales", position: "Lead" }]).imported;
     const bank = repository.getQuestionBank();
     const stage = selectStageQuestions(bank.questions, 1, `${participant.id}:${bank.version}`);
-    const answers = Object.fromEntries(stage.slice(0, 3).map((question) => [question.id, `${question.id}-option-0`]));
+    const answers = Object.fromEntries(stage.map((question) => [question.id, `${question.id}-option-0`]));
     const extraQuestion = bank.questions.find((question) => !stage.some((selected) => selected.id === question.id))!;
     answers[extraQuestion.id] = extraQuestion.options[0].id;
 
@@ -136,7 +136,7 @@ describe("assessment repository", () => {
     const [participant] = repository.importParticipants(campaign.id, [{ name: "Alice", department: "Sales", position: "Lead" }]).imported;
     const bank = repository.getQuestionBank();
     const legacyStage = selectStageQuestions(bank.questions, 1, participant.id);
-    const answers = Object.fromEntries(legacyStage.slice(0, 3).map((question) => [question.id, `${question.id}-option-0`]));
+    const answers = Object.fromEntries(legacyStage.map((question) => [question.id, `${question.id}-option-0`]));
 
     expect(() => repository.submitAssessment(participant.id, answers, 120)).toThrow();
   });

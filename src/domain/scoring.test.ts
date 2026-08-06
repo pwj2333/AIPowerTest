@@ -77,24 +77,22 @@ describe("adaptive stage selection", () => {
     expect(selectStageQuestions(pool, 3, "participant-b:v3.0").map((question) => question.id)).not.toEqual(selected.map((question) => question.id));
   });
 
-  it("randomizes the visible order without changing the adaptive scoring slots", () => {
+  it("randomizes all five visible questions without changing the selected set", () => {
     const stage = selectStageQuestions(questionPool(), 3, "participant-a:v3.0");
     const displayed = orderStageQuestionsForDisplay(stage, "assessment-run-a");
 
     expect(displayed).toHaveLength(stage.length);
     expect(new Set(displayed.map((question) => question.id))).toEqual(new Set(stage.map((question) => question.id)));
-    expect(new Set(displayed.slice(0, 3).map((question) => question.id))).toEqual(new Set(stage.slice(0, 3).map((question) => question.id)));
     expect(orderStageQuestionsForDisplay(stage, "assessment-run-a")).toEqual(displayed);
     expect(orderStageQuestionsForDisplay(stage, "assessment-run-b").map((question) => question.id)).not.toEqual(displayed.map((question) => question.id));
   });
 
-  it("decides clear three-answer stages and extends mixed evidence to five", () => {
+  it("requires five answers before deciding a stage", () => {
     const stage = selectStageQuestions(questionPool(), 1, "participant-a:v3.0");
 
     expect(evaluateStage(stage, stageAnswers(stage, [2, 2]))).toMatchObject({ status: "incomplete", questionCount: 2 });
-    expect(evaluateStage(stage, stageAnswers(stage, [2, 3, 2]))).toMatchObject({ status: "passed", questionCount: 3, totalScore: 7 });
-    expect(evaluateStage(stage, stageAnswers(stage, [0, 1, 1]))).toMatchObject({ status: "failed", questionCount: 3, totalScore: 2 });
-    expect(evaluateStage(stage, stageAnswers(stage, [3, 1, 2]))).toMatchObject({ status: "needs-more", questionCount: 3, totalScore: 6 });
+    expect(evaluateStage(stage, stageAnswers(stage, [2, 3, 2]))).toMatchObject({ status: "incomplete", questionCount: 3, totalScore: 7 });
+    expect(evaluateStage(stage, stageAnswers(stage, [0, 1, 1, 0]))).toMatchObject({ status: "incomplete", questionCount: 4, totalScore: 2 });
     expect(evaluateStage(stage, stageAnswers(stage, [3, 1, 2, 2, 2]))).toMatchObject({ status: "passed", questionCount: 5, totalScore: 10 });
     expect(evaluateStage(stage, stageAnswers(stage, [3, 1, 2, 1, 1]))).toMatchObject({ status: "failed", questionCount: 5, totalScore: 8 });
   });
@@ -104,14 +102,14 @@ describe("adaptive assessment scoring", () => {
   it("returns L0 and leaves unattempted dimensions unassessed when L1 fails", () => {
     const pool = questionPool();
     const stage = selectStageQuestions(pool, 1, "participant-a:v3.0");
-    const result = scoreAdaptiveAssessment(stageAnswers(stage, [0, 1, 1]), 120, pool, "participant-a:v3.0");
+    const result = scoreAdaptiveAssessment(stageAnswers(stage, [0, 1, 1, 0, 1]), 120, pool, "participant-a:v3.0");
 
     expect(result.level).toBe(0);
     expect(result.grade.code).toBe("L0");
-    expect(result.answeredQuestionCount).toBe(3);
+    expect(result.answeredQuestionCount).toBe(5);
     expect(result.stoppedAtLevel).toBe(1);
     expect(result.stageResults).toHaveLength(1);
-    expect(result.dimensionScores.office).toBe(22);
+    expect(result.dimensionScores.office).toBe(20);
     expect(result.dimensionScores.scenario).toBeNull();
   });
 
@@ -120,23 +118,23 @@ describe("adaptive assessment scoring", () => {
     const seed = "participant-b:v3.0";
     const levelOne = selectStageQuestions(pool, 1, seed);
     const levelTwo = selectStageQuestions(pool, 2, seed);
-    const answers = { ...stageAnswers(levelOne, [2, 2, 3]), ...stageAnswers(levelTwo, [1, 0, 1]) };
+    const answers = { ...stageAnswers(levelOne, [2, 2, 3, 2, 2]), ...stageAnswers(levelTwo, [1, 0, 1, 0, 1]) };
 
-    expect(scoreAdaptiveAssessment(answers, 180, pool, seed)).toMatchObject({ level: 1, stoppedAtLevel: 2, answeredQuestionCount: 6 });
-    expect(() => scoreAdaptiveAssessment(stageAnswers(levelOne, [2, 2, 3]), 90, pool, seed)).toThrow("测评尚未完成");
+    expect(scoreAdaptiveAssessment(answers, 180, pool, seed)).toMatchObject({ level: 1, stoppedAtLevel: 2, answeredQuestionCount: 10 });
+    expect(() => scoreAdaptiveAssessment(stageAnswers(levelOne, [2, 2, 3, 2]), 90, pool, seed)).toThrow("测评尚未完成");
   });
 
-  it("reaches L8 with 24 strong answers and requires review", () => {
+  it("reaches L8 with 40 strong answers and requires review", () => {
     const pool = questionPool();
     const seed = "participant-c:v3.0";
     const answers = Object.assign({}, ...Array.from({ length: 8 }, (_, index) => {
       const stage = selectStageQuestions(pool, index + 1, seed);
-      return stageAnswers(stage, [2, 2, 2]);
+      return stageAnswers(stage, [2, 2, 2, 2, 2]);
     }));
     const result = scoreAdaptiveAssessment(answers, 600, pool, seed);
 
     expect(result.level).toBe(8);
-    expect(result.answeredQuestionCount).toBe(24);
+    expect(result.answeredQuestionCount).toBe(40);
     expect(result.stageResults).toHaveLength(8);
     expect(result.reviewRequired).toBe(true);
   });
@@ -146,10 +144,10 @@ describe("adaptive assessment scoring", () => {
     const seed = "participant-d:v3.0";
     const stage = selectStageQuestions(pool, 1, seed);
     const threshold = stageAnswers(stage, [3, 1, 2, 2, 2]);
-    const failedNextStage = stageAnswers(selectStageQuestions(pool, 2, seed), [1, 1, 0]);
+    const failedNextStage = stageAnswers(selectStageQuestions(pool, 2, seed), [1, 1, 0, 1, 0]);
 
     expect(scoreAdaptiveAssessment({ ...threshold, ...failedNextStage }, 300, pool, seed).confidence).toBe("low");
-    expect(scoreAdaptiveAssessment(stageAnswers(stage, [0, 0, 0]), 10, pool, seed).confidence).toBe("low");
+    expect(scoreAdaptiveAssessment(stageAnswers(stage, [0, 0, 0, 0, 0]), 10, pool, seed).confidence).toBe("low");
   });
 });
 

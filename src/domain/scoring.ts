@@ -25,12 +25,10 @@ export function selectStageQuestions(questions: AssessmentQuestion[], level: num
 }
 
 export function orderStageQuestionsForDisplay(stage: AssessmentQuestion[], seed: string): AssessmentQuestion[] {
-  const firstQuestions = stableOrder(stage.slice(0, 3), `${seed}:display:first`);
-  const extensionQuestions = stableOrder(stage.slice(3), `${seed}:display:extension`);
-  return [...firstQuestions, ...extensionQuestions];
+  return stableOrder(stage, `${seed}:display`);
 }
 
-export type StageStatus = "incomplete" | "needs-more" | "passed" | "failed";
+export type StageStatus = "incomplete" | "passed" | "failed";
 
 export interface StageEvaluation {
   status: StageStatus;
@@ -40,18 +38,9 @@ export interface StageEvaluation {
 
 export function evaluateStage(stage: AssessmentQuestion[], answers: AnswerMap): StageEvaluation {
   const score = (question: AssessmentQuestion) => question.options.find((option) => option.id === answers[question.id])?.score;
-  const firstScores = stage.slice(0, 3).map(score);
-  const firstAnswered = firstScores.filter((value): value is 0 | 1 | 2 | 3 => value !== undefined);
-  if (firstAnswered.length < 3) {
-    return { status: "incomplete", questionCount: firstAnswered.length, totalScore: firstAnswered.reduce<number>((total, value) => total + value, 0) };
-  }
-  const firstTotal = firstAnswered.reduce<number>((total, value) => total + value, 0);
-  if (firstAnswered.every((value) => value >= 2)) return { status: "passed", questionCount: 3, totalScore: firstTotal };
-  if (firstAnswered.every((value) => value <= 1)) return { status: "failed", questionCount: 3, totalScore: firstTotal };
-
   const allScores = stage.slice(0, 5).map(score);
   const allAnswered = allScores.filter((value): value is 0 | 1 | 2 | 3 => value !== undefined);
-  if (allAnswered.length < 5) return { status: "needs-more", questionCount: allAnswered.length, totalScore: allAnswered.reduce<number>((total, value) => total + value, 0) };
+  if (allAnswered.length < 5) return { status: "incomplete", questionCount: allAnswered.length, totalScore: allAnswered.reduce<number>((total, value) => total + value, 0) };
   const totalScore = allAnswered.reduce<number>((total, value) => total + value, 0);
   return { status: totalScore >= 10 ? "passed" : "failed", questionCount: 5, totalScore };
 }
@@ -266,7 +255,7 @@ export function scoreAdaptiveAssessment(
     const stage = selectStageQuestions(questions, stageLevel, seed);
     if (stage.length < 5) throw new Error(`L${stageLevel} 题目不足 5 道`);
     const evaluation = evaluateStage(stage, answers);
-    if (evaluation.status === "incomplete" || evaluation.status === "needs-more") throw new Error("测评尚未完成");
+    if (evaluation.status === "incomplete") throw new Error("测评尚未完成");
     const attempted = stage.slice(0, evaluation.questionCount);
     answeredQuestions.push(...attempted);
     stageResults.push({
