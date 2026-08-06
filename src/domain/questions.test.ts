@@ -54,12 +54,13 @@ describe("Markdown question bank", () => {
   it("covers the requested general workplace AI topics", () => {
     const visibleText = questions.flatMap((question) => [question.category, question.prompt, ...question.options.map((option) => option.label)]).join(" ");
 
-    expect(visibleText).toMatch(/聚合平台/);
-    expect(visibleText).toMatch(/模型选择/);
-    expect(visibleText).toMatch(/知识库/);
-    expect(visibleText).toMatch(/工作流/);
-    expect(visibleText).toMatch(/智能体/);
+    expect(visibleText).toMatch(/多个 AI/);
+    expect(visibleText).toMatch(/AI 工具/);
+    expect(visibleText).toMatch(/公司资料库/);
+    expect(visibleText).toMatch(/固定步骤/);
+    expect(visibleText).toMatch(/AI 助手/);
     expect(visibleText).toMatch(/权限/);
+    expect(visibleText).not.toMatch(/聚合平台|模型路由|检索增强|多模态|API|项目组合|数据治理|审计/);
   });
 
   it("rejects an imported answer outside the natural length range", () => {

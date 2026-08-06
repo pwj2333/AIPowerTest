@@ -8,7 +8,7 @@ export type QuestionSeed = readonly [
   options: readonly [string, string, string, string],
 ];
 
-export const questionSeeds: QuestionSeed[] = [
+const rawQuestionSeeds: QuestionSeed[] = [
   [1, "office", "模型与应用", "面对一项新的文字任务，你怎样选择 AI 工具？", ["沿用最熟悉的工具完成这项任务", "在聚合平台使用默认模型处理任务", "根据任务类型选择合适工具处理", "比较能力限制后选择模型并核验输出"]],
   [1, "office", "聚合平台", "聚合平台同时提供多个模型，主要价值是什么？", ["把多个聊天入口集中到同一页面", "方便在不同模型之间切换和比较", "根据任务需要选择能力合适的模型", "统一管理模型权限成本并评估使用效果"]],
   [1, "office", "任务目标", "请 AI 起草一份通知时，你首先会说明什么？", ["说明需要生成一份工作通知", "补充通知主题和大致语气要求", "写清通知对象目的和关键信息", "说明目标限制格式并提供合格示例"]],
@@ -117,3 +117,73 @@ export const questionSeeds: QuestionSeed[] = [
   [8, "innovation", "模型变化", "平台更换底层模型后，怎样确认业务仍然稳定？", ["让主要使用者体验新模型的结果", "比较新旧模型处理相同任务的差别", "运行固定评估集并检查重点失败案例", "分批切换监控业务指标并保留回退能力"]],
   [8, "innovation", "持续改进", "企业怎样让 AI 能力建设持续产生价值？", ["定期收集部门的新工具使用需求", "持续组织案例分享和经验交流", "把反馈指标风险和资产更新形成闭环", "按战略目标复盘组合并调整制度资源"]],
 ];
+
+// ponytail: Keep the bank editable as-is; a small phrase table lowers jargon without rewriting 100 scored seeds.
+const plainLanguageReplacements: readonly [string, string][] = [
+  ["模型路由", "自动选工具"],
+  ["模型选择", "选 AI 工具"],
+  ["聚合平台", "多个 AI 的平台"],
+  ["检索增强", "带来源的回答"],
+  ["多模态", "文字和图片"],
+  ["智能体协作", "AI 助手协作"],
+  ["智能体", "AI 助手"],
+  ["知识库", "公司资料库"],
+  ["工作流", "固定步骤"],
+  ["提示词库", "AI 要求库"],
+  ["提示词", "给 AI 的要求"],
+  ["评估集", "固定测试题"],
+  ["项目组合", "项目清单"],
+  ["风险清单", "风险列表"],
+  ["人工接管率", "转人工比例"],
+  ["人工接管", "转给人工"],
+  ["异常分支权限", "出错时的处理权限"],
+  ["异常分支", "出错时处理"],
+  ["数据流向", "资料怎么流转"],
+  ["数据等级", "资料敏感程度"],
+  ["最小权限", "只给必要权限"],
+  ["授权范围", "可用范围"],
+  ["数据条款", "资料使用规定"],
+  ["退出方案", "停止使用办法"],
+  ["分批发布", "分批更新"],
+  ["生命周期", "长期维护"],
+  ["准入", "允许使用"],
+  ["回退", "恢复旧版"],
+  ["持续复盘", "持续回头检查"],
+  ["试点范围", "试用范围"],
+  ["试点", "小范围试用"],
+  ["治理", "管理"],
+  ["审计追溯", "检查记录"],
+  ["审计信息", "检查记录"],
+  ["审计复盘", "查看记录并回头检查"],
+  ["审计", "检查记录"],
+  ["复盘", "回头检查"],
+  ["核验", "检查"],
+  ["交叉核对", "互相检查"],
+  ["核对", "检查"],
+  ["口径", "计算方法"],
+  ["基线", "原来结果"],
+  ["路由规则", "选择规则"],
+  ["分级路由", "分级选择"],
+  ["API 能力", "自动连接能力"],
+  ["指标", "数据"],
+  ["模型", "工具"],
+];
+
+function simplifyText(text: string): string {
+  return plainLanguageReplacements
+    .reduce((value, [source, target]) => value.replaceAll(source, target), text)
+    .replace(/([\u4e00-\u9fff])AI/g, "$1 AI")
+    .replace(/AI(?=[\u4e00-\u9fff])/g, "AI ")
+    .replaceAll("固定固定", "固定")
+    .replaceAll("允许范围范围", "可用范围")
+    .replaceAll("给给 AI 的要求", "给 AI 的要求")
+    .trim();
+}
+
+export const questionSeeds: QuestionSeed[] = rawQuestionSeeds.map(([level, dimension, category, prompt, options]) => [
+  level,
+  dimension,
+  simplifyText(category),
+  simplifyText(prompt),
+  options.map(simplifyText) as [string, string, string, string],
+]);
