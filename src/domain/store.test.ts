@@ -18,6 +18,42 @@ describe("assessment repository", () => {
     expect(repository.listCampaigns()).toEqual([]);
   });
 
+  it("reuses a global roster for new campaigns without deleting it", () => {
+    const repository = createAssessmentRepository("global-roster-test");
+    const roster = repository.importRoster([
+      { name: "Alice", department: "Sales", position: "Lead" },
+      { name: "Bob", department: "Operations", position: "Specialist" },
+    ]);
+    const first = repository.createCampaign({ name: "First" });
+    const second = repository.createCampaign({ name: "Second" });
+
+    expect(repository.listRoster().map((person) => person.name)).toEqual(["Alice", "Bob"]);
+    expect(repository.listParticipants(first.id).map((person) => person.name)).toEqual(["Alice", "Bob"]);
+    expect(repository.listParticipants(second.id).map((person) => person.name)).toEqual(["Alice", "Bob"]);
+    expect(repository.listParticipants(first.id)[0].token).not.toBe(repository.listParticipants(second.id)[0].token);
+
+    repository.setRosterEnrollment(second.id, roster.imported[0].id, false);
+    expect(repository.listParticipants(second.id).map((person) => person.name)).toEqual(["Bob"]);
+    repository.setRosterEnrollment(second.id, roster.imported[0].id, true);
+    expect(repository.listParticipants(second.id).map((person) => person.name)).toEqual(["Alice", "Bob"]);
+
+    repository.deleteCampaign(first.id);
+    expect(repository.listRoster().map((person) => person.name)).toEqual(["Alice", "Bob"]);
+  });
+
+  it("skips malformed legacy participants while building the global roster", () => {
+    localStorage.setItem("malformed-roster-migration-test", JSON.stringify({
+      campaigns: [{ id: "c1", name: "First", status: "open", questionVersion: "v3.0", createdAt: "2026-08-09T00:00:00.000Z" }],
+      participants: [null, { id: "p1", campaignId: "c1", name: "Alice", department: "Sales", position: "Lead", token: "invite-1" }],
+      drafts: {},
+      results: []
+    }));
+    const repository = createAssessmentRepository("malformed-roster-migration-test");
+
+    expect(repository.listRoster().map((person) => person.name)).toEqual(["Alice"]);
+    expect(repository.listParticipants("c1").map((person) => person.id)).toEqual(["p1"]);
+  });
+
   it("migrates the previous default question bank to the refreshed version", () => {
     localStorage.setItem("question-bank-migration-test", JSON.stringify({
       campaigns: [{ id: "campaign-1", status: "open", questionVersion: "v1.0" }],

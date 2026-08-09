@@ -14,13 +14,14 @@ const participantSessionCookie = "ai_participant_session";
 const participantSessionLifetimeMs = 8 * 60 * 60 * 1000;
 
 function emptyState() {
-  return { campaigns: [], participants: [], drafts: {}, results: [] };
+  return { campaigns: [], roster: [], participants: [], drafts: {}, results: [] };
 }
 
 function normalizeState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("JSON 数据文件格式无效");
   return {
     campaigns: Array.isArray(value.campaigns) ? value.campaigns : [],
+    roster: Array.isArray(value.roster) ? value.roster : [],
     participants: Array.isArray(value.participants) ? value.participants : [],
     drafts: value.drafts && typeof value.drafts === "object" && !Array.isArray(value.drafts) ? value.drafts : {},
     results: Array.isArray(value.results) ? value.results : [],
@@ -83,17 +84,38 @@ export function mergeStatePatch(currentValue, patch) {
   const current = normalizeState(currentValue);
   const next = { ...current };
   const removedCampaigns = removalSet(patch.remove, "campaigns");
+  const removedRoster = removalSet(patch.remove, "roster");
   const removedParticipants = removalSet(patch.remove, "participants");
   const removedDrafts = removalSet(patch.remove, "drafts");
   const removedResults = removalSet(patch.remove, "results");
+  const campaignParticipantIds = new Set(current.participants
+    .filter((participant) => removedCampaigns.has(participant.campaignId))
+    .map((participant) => participant.id));
+  for (const participantId of removedParticipants) {
+    if (campaignParticipantIds.has(participantId)) continue;
+    const hasDraft = participantId in current.drafts && !removedDrafts.has(participantId);
+    const hasResult = current.results.some((result) => result.participantId === participantId) && !removedResults.has(participantId);
+    if (hasDraft || hasResult) {
+      const error = new Error("该人员已有测评记录，不能从批次中移除");
+      error.statusCode = 409;
+      throw error;
+    }
+  }
+  const removedParticipantIds = new Set([...removedParticipants, ...campaignParticipantIds]);
   next.campaigns = current.campaigns.filter((campaign) => !removedCampaigns.has(campaign.id));
-  next.participants = current.participants.filter((participant) => !removedParticipants.has(participant.id));
-  next.results = current.results.filter((result) => !removedResults.has(result.participantId));
+  next.roster = current.roster.filter((person) => !removedRoster.has(person.id));
+  next.participants = current.participants.filter((participant) => !removedParticipantIds.has(participant.id));
+  next.results = current.results.filter((result) => !removedParticipantIds.has(result.participantId) && !removedResults.has(result.participantId));
   next.drafts = { ...current.drafts };
   removedDrafts.forEach((participantId) => delete next.drafts[participantId]);
+  campaignParticipantIds.forEach((participantId) => delete next.drafts[participantId]);
   if (patch.campaigns !== undefined) {
     if (!Array.isArray(patch.campaigns)) throw new Error("批次数据格式无效");
     next.campaigns = mergeByKey(next.campaigns, patch.campaigns, "id");
+  }
+  if (patch.roster !== undefined) {
+    if (!Array.isArray(patch.roster)) throw new Error("花名册数据格式无效");
+    next.roster = mergeByKey(next.roster, patch.roster, "id");
   }
   if (patch.participants !== undefined) {
     if (!Array.isArray(patch.participants)) throw new Error("人员数据格式无效");
@@ -297,8 +319,8 @@ function expectedAdaptiveSubmission(participant, campaign, questionBank, submitt
 
 function patchRequiresAdmin(state, patch) {
   if (patch.remove && typeof patch.remove === "object" && !Array.isArray(patch.remove)
-    && ["campaigns", "participants", "results"].some((key) => Array.isArray(patch.remove[key]) && patch.remove[key].length > 0)) return true;
-  if (patch.campaigns !== undefined || patch.questionBank !== undefined) return true;
+    && ["campaigns", "roster", "participants", "results"].some((key) => Array.isArray(patch.remove[key]) && patch.remove[key].length > 0)) return true;
+  if (patch.campaigns !== undefined || patch.roster !== undefined || patch.questionBank !== undefined) return true;
   if (!Array.isArray(patch.participants)) return false;
   return patch.participants.some((update) => {
     const existing = state.participants.find((participant) => participant.id === update?.id);

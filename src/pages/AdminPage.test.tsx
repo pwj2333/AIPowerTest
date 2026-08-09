@@ -27,8 +27,51 @@ describe("administrator workspace", () => {
     fireEvent.click(screen.getByRole("link", { name: "人员名单" }));
     expect(screen.getByRole("heading", { name: "人员名单" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("CSV 人员数据"), { target: { value: "姓名,部门,岗位\n测试员工,运营部,专员" } });
-    fireEvent.click(screen.getByRole("button", { name: "导入人员" }));
+    fireEvent.click(screen.getByRole("button", { name: "导入全局花名册" }));
     expect(await screen.findByText("成功导入 1 人")).toBeInTheDocument();
+  });
+
+  it("uploads one global roster and manages membership for a campaign", async () => {
+    const firstRender = render(
+      <MemoryRouter initialEntries={["/admin/people"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("CSV 人员数据"), { target: { value: "姓名,部门,岗位\nAlice,Sales,Lead" } });
+    fireEvent.click(screen.getByRole("button", { name: "导入全局花名册" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("成功导入 1 人");
+    expect(assessmentRepository.listRoster().map((person) => person.name)).toEqual(["Alice"]);
+
+    assessmentRepository.createCampaign({ name: "First" });
+    firstRender.unmount();
+    render(
+      <MemoryRouter initialEntries={["/admin/people"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const member = screen.getByRole("checkbox", { name: "Alice 参加 First" });
+    expect(member).toBeChecked();
+    fireEvent.click(member);
+    expect(assessmentRepository.listParticipants(assessmentRepository.listCampaigns()[0].id)).toHaveLength(0);
+  });
+
+  it("syncs a reusable roster into a campaign created before the roster", async () => {
+    const campaign = assessmentRepository.createCampaign({ name: "First" });
+    assessmentRepository.importRoster([{ name: "Alice", department: "Sales", position: "Lead" }]);
+    render(
+      <MemoryRouter initialEntries={["/admin/people"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const member = screen.getByRole("checkbox", { name: "Alice 参加 First" });
+    expect(member).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "同步全部花名册" }));
+
+    await waitFor(() => expect(member).toBeChecked());
+    expect(assessmentRepository.listParticipants(campaign.id)).toHaveLength(1);
   });
 
   it("does not rank unchallenged dimensions as priority gaps", () => {
@@ -80,23 +123,16 @@ describe("administrator workspace", () => {
       .map((option) => option.label));
   });
 
-  it("copies people between campaigns and exposes a roster export", async () => {
-    const source = assessmentRepository.createCampaign({ name: "Source" });
-    const target = assessmentRepository.createCampaign({ name: "Target" });
-    assessmentRepository.importParticipants(source.id, [{ name: "Alice", department: "Sales", position: "Lead" }]);
-    assessmentRepository.importParticipants(target.id, [{ name: "Alice", department: "Sales", position: "Old" }]);
+  it("exports a reusable global roster without requiring a campaign", () => {
+    assessmentRepository.importRoster([{ name: "Alice", department: "Sales", position: "Lead" }]);
     render(
       <MemoryRouter initialEntries={["/admin/people"]}>
         <App />
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText("目标测评批次"), { target: { value: source.id } });
-    expect(screen.getByRole("button", { name: "导出人员 CSV" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("复制到批次"), { target: { value: target.id } });
-    fireEvent.click(screen.getByRole("button", { name: "复制人员" }));
-
-    expect(await screen.findByRole("status")).toHaveTextContent("复制 0 人，跳过 1 人");
+    expect(screen.getByRole("button", { name: "导出全局花名册 CSV" })).toBeEnabled();
+    expect(screen.getByText("尚未创建测评批次")).toBeInTheDocument();
   });
 
   it("archives, recovers, and permanently deletes campaigns with confirmation", async () => {

@@ -1,5 +1,5 @@
 import { getGrade } from "./questions";
-import type { Participant, StoredResult } from "./store";
+import type { Participant, RosterPerson, StoredResult } from "./store";
 
 export type CsvValue = string | number | null | undefined;
 
@@ -44,6 +44,13 @@ export function buildRosterCsv(participants: Participant[], results: StoredResul
         ...fields.stages
       ];
     })
+  ]);
+}
+
+export function buildRosterDirectoryCsv(roster: RosterPerson[]): string {
+  return toCsv([
+    ["姓名", "部门", "岗位"],
+    ...roster.map((person) => [person.name, person.department, person.position])
   ]);
 }
 

@@ -15,6 +15,7 @@ export interface AssessmentCampaign {
 export interface Participant {
   id: string;
   campaignId: string;
+  rosterId?: string;
   name: string;
   department: string;
   position: string;
@@ -29,6 +30,10 @@ export interface RosterRow {
   position: string;
 }
 
+export interface RosterPerson extends RosterRow {
+  id: string;
+}
+
 export interface ImportError {
   row: number;
   message: string;
@@ -36,6 +41,11 @@ export interface ImportError {
 
 export interface ImportReport {
   imported: Participant[];
+  errors: ImportError[];
+}
+
+export interface RosterImportReport {
+  imported: RosterPerson[];
   errors: ImportError[];
 }
 
@@ -68,6 +78,7 @@ export interface QuestionBank extends StoredQuestionBank {
 
 interface AssessmentState {
   campaigns: AssessmentCampaign[];
+  roster: RosterPerson[];
   participants: Participant[];
   drafts: Record<string, AssessmentDraft>;
   results: StoredResult[];
@@ -76,12 +87,14 @@ interface AssessmentState {
 
 interface AssessmentStatePatch {
   campaigns?: Array<Partial<AssessmentCampaign> & Pick<AssessmentCampaign, "id">>;
+  roster?: Array<Partial<RosterPerson> & Pick<RosterPerson, "id">>;
   participants?: Array<Partial<Participant> & Pick<Participant, "id">>;
   drafts?: Record<string, AssessmentDraft | null>;
   results?: StoredResult[];
   questionBank?: StoredQuestionBank;
   remove?: {
     campaigns?: string[];
+    roster?: string[];
     participants?: string[];
     drafts?: string[];
     results?: string[];
@@ -101,7 +114,11 @@ function initialQuestionBank(): StoredQuestionBank {
 }
 
 function emptyState(): AssessmentState {
-  return { campaigns: [], participants: [], drafts: {}, results: [], questionBank: initialQuestionBank() };
+  return { campaigns: [], roster: [], participants: [], drafts: {}, results: [], questionBank: initialQuestionBank() };
+}
+
+function rosterIdentity(person: RosterRow): string {
+  return `${normalizeName(person.name)}|${normalizeName(person.department)}`;
 }
 
 function normalizeState(stored: Partial<AssessmentState>): AssessmentState {
@@ -128,9 +145,45 @@ function normalizeState(stored: Partial<AssessmentState>): AssessmentState {
       resetRequired: true
     } satisfies AssessmentDraft]];
   })) as Record<string, AssessmentDraft>;
+  const roster = (Array.isArray(stored.roster) ? stored.roster : []).flatMap((value) => {
+    if (!value || typeof value !== "object") return [];
+    const person = value as Partial<RosterPerson>;
+    if (typeof person.id !== "string" || !person.id || typeof person.name !== "string" || typeof person.department !== "string" || typeof person.position !== "string") return [];
+    return [{ id: person.id, name: person.name, department: person.department, position: person.position } satisfies RosterPerson];
+  });
+  const rosterById = new Map(roster.map((person) => [person.id, person]));
+  const rosterByIdentity = new Map(roster.map((person) => [rosterIdentity(person), person]));
+  const participants = (Array.isArray(stored.participants) ? stored.participants : []).flatMap((value) => {
+    if (!value || typeof value !== "object") return [];
+    const participant = value as Partial<Participant>;
+    if (typeof participant.id !== "string" || !participant.id || typeof participant.campaignId !== "string" || !participant.campaignId
+      || typeof participant.name !== "string" || typeof participant.department !== "string" || typeof participant.position !== "string"
+      || typeof participant.token !== "string" || !participant.token) return [];
+    const normalizedParticipant = {
+      id: participant.id,
+      campaignId: participant.campaignId,
+      name: participant.name,
+      department: participant.department,
+      position: participant.position,
+      token: participant.token,
+      ...(typeof participant.visitedAt === "string" ? { visitedAt: participant.visitedAt } : {}),
+      ...(typeof participant.completedAt === "string" ? { completedAt: participant.completedAt } : {})
+    } satisfies Participant;
+    const identity = rosterIdentity(normalizedParticipant);
+    let rosterPerson = typeof participant.rosterId === "string" ? rosterById.get(participant.rosterId) : undefined;
+    if (!rosterPerson) rosterPerson = rosterByIdentity.get(identity);
+    if (!rosterPerson) {
+      rosterPerson = { id: `roster-${normalizedParticipant.id}`, name: normalizedParticipant.name, department: normalizedParticipant.department, position: normalizedParticipant.position };
+      roster.push(rosterPerson);
+      rosterById.set(rosterPerson.id, rosterPerson);
+      rosterByIdentity.set(identity, rosterPerson);
+    }
+    return [{ ...normalizedParticipant, rosterId: rosterPerson.id }];
+  });
   const state: AssessmentState = {
     campaigns: Array.isArray(stored.campaigns) ? stored.campaigns : [],
-    participants: Array.isArray(stored.participants) ? stored.participants : [],
+    roster,
+    participants,
     drafts,
     results: Array.isArray(stored.results) ? stored.results : [],
     questionBank: storedQuestionBank
@@ -175,6 +228,7 @@ function createStatePatch(previous: AssessmentState, next: AssessmentState): Ass
   };
   // ponytail: these lists are expected to stay below a few thousand rows; use indexed maps if that ceiling changes.
   const campaigns = changed(previous.campaigns, next.campaigns);
+  const roster = changed(previous.roster, next.roster);
   const participants = changed(previous.participants, next.participants);
   const results = next.results.filter((item) => {
     const existing = previous.results.find((candidate) => candidate.participantId === item.participantId);
@@ -185,12 +239,14 @@ function createStatePatch(previous: AssessmentState, next: AssessmentState): Ass
     .map((id) => [id, next.drafts[id] ?? null]));
   const remove = {
     campaigns: previous.campaigns.filter((item) => !next.campaigns.some((candidate) => candidate.id === item.id)).map((item) => item.id),
+    roster: previous.roster.filter((item) => !next.roster.some((candidate) => candidate.id === item.id)).map((item) => item.id),
     participants: previous.participants.filter((item) => !next.participants.some((candidate) => candidate.id === item.id)).map((item) => item.id),
     drafts: Object.keys(previous.drafts).filter((id) => !(id in next.drafts)),
     results: previous.results.filter((item) => !next.results.some((candidate) => candidate.participantId === item.participantId)).map((item) => item.participantId)
   };
   return {
     ...(campaigns.length ? { campaigns } : {}),
+    ...(roster.length ? { roster } : {}),
     ...(participants.length ? { participants } : {}),
     ...(Object.keys(drafts).length ? { drafts } : {}),
     ...(results.length ? { results } : {}),
@@ -217,6 +273,10 @@ export interface AssessmentRepository {
   getCampaign(campaignId: string): AssessmentCampaign | undefined;
   setCampaignStatus(campaignId: string, status: CampaignStatus): AssessmentCampaign;
   deleteCampaign(campaignId: string): AssessmentCampaign;
+  importRoster(rows: RosterRow[]): RosterImportReport;
+  listRoster(): RosterPerson[];
+  syncRosterToCampaign(campaignId: string): Participant[];
+  setRosterEnrollment(campaignId: string, rosterId: string, enrolled: boolean): void;
   importParticipants(campaignId: string, rows: RosterRow[]): ImportReport;
   copyParticipants(sourceCampaignId: string, targetCampaignId: string): {
     imported: Participant[];
@@ -290,6 +350,55 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
     return participant;
   };
 
+  const enrollRoster = (state: AssessmentState, campaignId: string, people = state.roster): Participant[] => {
+    const enrolledRosterIds = new Set(state.participants
+      .filter((person) => person.campaignId === campaignId)
+      .map((person) => person.rosterId));
+    const added = people.flatMap((person) => {
+      if (enrolledRosterIds.has(person.id)) return [];
+      enrolledRosterIds.add(person.id);
+      const participant: Participant = {
+        id: makeId("participant"),
+        campaignId,
+        rosterId: person.id,
+        name: person.name,
+        department: person.department,
+        position: person.position,
+        token: makeId("invite")
+      };
+      state.participants.push(participant);
+      return [participant];
+    });
+    return added;
+  };
+
+  const importRosterRows = (state: AssessmentState, rows: RosterRow[]): RosterImportReport => {
+    const imported: RosterPerson[] = [];
+    const errors: ImportError[] = [];
+    const identities = new Set(state.roster.map(rosterIdentity));
+    rows.forEach((rawRow, index) => {
+      const row = {
+        name: rawRow.name?.trim(),
+        department: rawRow.department?.trim(),
+        position: rawRow.position?.trim()
+      };
+      if (!row.name || !row.department || !row.position) {
+        errors.push({ row: index + 1, message: "姓名、部门和岗位均为必填项" });
+        return;
+      }
+      const identity = rosterIdentity(row);
+      if (identities.has(identity)) {
+        errors.push({ row: index + 1, message: "花名册中姓名和部门重复" });
+        return;
+      }
+      identities.add(identity);
+      const person: RosterPerson = { id: makeId("roster"), ...row };
+      state.roster.push(person);
+      imported.push(person);
+    });
+    return { imported, errors };
+  };
+
   const repository: AssessmentRepository = {
     async initialize(options = {}) {
       const response = await fetch("/api/state", { headers: { Accept: "application/json" } });
@@ -302,6 +411,7 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
         .map(({ id, questionVersion }) => ({ id, questionVersion }));
       const migrationPatch: AssessmentStatePatch = {
         ...(!body.questionBank || JSON.stringify(body.questionBank) !== JSON.stringify(normalized.questionBank) ? { questionBank: normalized.questionBank } : {}),
+        ...(!body.roster || JSON.stringify(body.roster) !== JSON.stringify(normalized.roster) ? { roster: normalized.roster } : {}),
         ...(changedCampaigns.length ? { campaigns: changedCampaigns } : {})
       };
       remoteState = normalized;
@@ -338,6 +448,7 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
         createdAt: new Date().toISOString()
       };
       state.campaigns.unshift(campaign);
+      enrollRoster(state, campaign.id);
       write(state);
       return campaign;
     },
@@ -371,12 +482,51 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
       return campaign;
     },
 
+    importRoster(rows) {
+      const state = read();
+      const report = importRosterRows(state, rows);
+      write(state);
+      return report;
+    },
+
+    listRoster() {
+      return read().roster;
+    },
+
+    syncRosterToCampaign(campaignId) {
+      const state = read();
+      requireCampaign(state, campaignId);
+      const added = enrollRoster(state, campaignId);
+      write(state);
+      return added;
+    },
+
+    setRosterEnrollment(campaignId, rosterId, enrolled) {
+      const state = read();
+      requireCampaign(state, campaignId);
+      const rosterPerson = state.roster.find((person) => person.id === rosterId);
+      if (!rosterPerson) throw new Error("未找到花名册人员");
+      const participant = state.participants.find((person) => person.campaignId === campaignId && person.rosterId === rosterId);
+      if (enrolled) {
+        if (!participant) enrollRoster(state, campaignId, [rosterPerson]);
+        write(state);
+        return;
+      }
+      if (!participant) return;
+      if (state.results.some((item) => item.participantId === participant.id) || state.drafts[participant.id]) {
+        throw new Error("该人员已有测评记录，不能从批次中移除");
+      }
+      state.participants = state.participants.filter((person) => person.id !== participant.id);
+      write(state);
+    },
+
     importParticipants(campaignId, rows) {
       const state = read();
       requireCampaign(state, campaignId);
       const imported: Participant[] = [];
       const errors: ImportError[] = [];
       const identities = new Set(state.participants.filter((person) => person.campaignId === campaignId).map((person) => `${person.name}|${person.department}`));
+      const rosterByIdentity = new Map(state.roster.map((person) => [rosterIdentity(person), person]));
 
       rows.forEach((rawRow, index) => {
         const row = {
@@ -394,9 +544,16 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
           return;
         }
         identities.add(identity);
+        let rosterPerson = rosterByIdentity.get(rosterIdentity(row));
+        if (!rosterPerson) {
+          rosterPerson = { id: makeId("roster"), name: row.name, department: row.department, position: row.position };
+          state.roster.push(rosterPerson);
+          rosterByIdentity.set(rosterIdentity(row), rosterPerson);
+        }
         const participant: Participant = {
           id: makeId("participant"),
           campaignId,
+          rosterId: rosterPerson.id,
           name: row.name,
           department: row.department,
           position: row.position,
@@ -431,6 +588,7 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
           const participant: Participant = {
             id: makeId("participant"),
             campaignId: targetCampaignId,
+            rosterId: sourcePerson.rosterId,
             name: sourcePerson.name,
             department: sourcePerson.department,
             position: sourcePerson.position,
@@ -444,7 +602,11 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
     },
 
     listParticipants(campaignId) {
-      return read().participants.filter((person) => person.campaignId === campaignId);
+      const state = read();
+      const order = new Map(state.roster.map((person, index) => [person.id, index]));
+      return state.participants
+        .filter((person) => person.campaignId === campaignId)
+        .sort((left, right) => (order.get(left.rosterId ?? "") ?? Number.MAX_SAFE_INTEGER) - (order.get(right.rosterId ?? "") ?? Number.MAX_SAFE_INTEGER));
     },
 
     getParticipant(participantId) {
