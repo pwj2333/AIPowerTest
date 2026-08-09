@@ -53,5 +53,7 @@ describe("employee adaptive assessment flow", () => {
     expect(screen.getByText(/最高通过 L1/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "逐关结果" })).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(document.querySelector(".confidence-chip")).toBeNull();
+    expect(document.querySelector(".notice-warning")).toBeNull();
   });
 });

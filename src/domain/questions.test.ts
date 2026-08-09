@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultQuestionMarkdown, getOptionLengthSpread, parseQuestionMarkdown, questions, serializeQuestionMarkdown } from "./questions";
+import { defaultQuestionMarkdown, getGrade, getOptionLengthSpread, parseQuestionMarkdown, questions, serializeQuestionMarkdown } from "./questions";
 
 const prohibitedOptionText = /直接|不管|随便|完全不用|不用确认|无需核对|凭感觉|就行|就好|再说|吧[，。！？]?$/;
 
@@ -70,6 +70,12 @@ describe("Markdown question bank", () => {
     expect(beginnerText).toMatch(/AI 可以帮忙解决/);
     expect(beginnerText).not.toMatch(/聚合平台|模型路由|检索增强|多模态|API|知识库|工作流|智能体|治理|审计/);
     expect(visibleText).not.toMatch(/聚合平台|模型路由|检索增强|多模态|API|项目组合|数据治理|审计/);
+  });
+
+  it("provides three sufficiently detailed action tasks for every level", () => {
+    const taskSets = Array.from({ length: 9 }, (_, level) => getGrade(level).tasks);
+    expect(taskSets).toHaveLength(9);
+    expect(taskSets.every((tasks) => tasks.length === 3 && tasks.every((task) => Array.from(task).length >= 28))).toBe(true);
   });
 
   it("rejects an imported answer outside the natural length range", () => {
