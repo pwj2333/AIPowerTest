@@ -1,5 +1,5 @@
 import { getGrade } from "./questions";
-import type { Participant, RosterPerson, StoredResult } from "./store";
+import type { Participant, RosterPerson, RosterRow, StoredResult } from "./store";
 
 export type CsvValue = string | number | null | undefined;
 
@@ -52,6 +52,40 @@ export function buildRosterDirectoryCsv(roster: RosterPerson[]): string {
     ["姓名", "部门", "岗位"],
     ...roster.map((person) => [person.name, person.department, person.position])
   ]);
+}
+
+export function parseRosterDirectoryCsv(content: string): RosterRow[] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index];
+    if (quoted) {
+      if (character === '"') {
+        if (content[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else quoted = false;
+      } else field += character;
+      continue;
+    }
+    if (character === '"') quoted = true;
+    else if (character === ",") {
+      row.push(field);
+      field = "";
+    } else if (character === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (character !== "\r") field += character;
+  }
+  if (field || row.length) rows.push([...row, field]);
+  const firstCell = rows[0]?.[0]?.replace(/^\ufeff/, "").trim();
+  return rows.slice(firstCell === "姓名" ? 1 : 0)
+    .filter((cells) => cells.some((cell) => cell))
+    .map(([name = "", department = "", position = ""]) => ({ name, department, position }));
 }
 
 export function buildResultsCsv(participants: Participant[], results: StoredResult[]): string {

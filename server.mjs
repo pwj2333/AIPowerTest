@@ -93,8 +93,8 @@ export function mergeStatePatch(currentValue, patch) {
     .map((participant) => participant.id));
   for (const participantId of removedParticipants) {
     if (campaignParticipantIds.has(participantId)) continue;
-    const hasDraft = participantId in current.drafts && !removedDrafts.has(participantId);
-    const hasResult = current.results.some((result) => result.participantId === participantId) && !removedResults.has(participantId);
+    const hasDraft = participantId in current.drafts;
+    const hasResult = current.results.some((result) => result.participantId === participantId);
     if (hasDraft || hasResult) {
       const error = new Error("该人员已有测评记录，不能从批次中移除");
       error.statusCode = 409;

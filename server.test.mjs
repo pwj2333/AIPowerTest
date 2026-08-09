@@ -105,6 +105,9 @@ test("rejects removing a participant with assessment data that the patch did not
   };
 
   assert.throws(() => mergeStatePatch(current, { remove: { participants: ["p1"] } }), /测评记录/);
+  assert.throws(() => mergeStatePatch(current, {
+    remove: { participants: ["p1"], drafts: ["p1"], results: ["p1"] }
+  }), /测评记录/);
 });
 
 test("cascades current participant data when a campaign is removed", () => {

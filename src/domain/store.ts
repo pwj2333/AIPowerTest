@@ -158,14 +158,14 @@ function normalizeState(stored: Partial<AssessmentState>): AssessmentState {
     const participant = value as Partial<Participant>;
     if (typeof participant.id !== "string" || !participant.id || typeof participant.campaignId !== "string" || !participant.campaignId
       || typeof participant.name !== "string" || typeof participant.department !== "string" || typeof participant.position !== "string"
-      || typeof participant.token !== "string" || !participant.token) return [];
+    ) return [];
     const normalizedParticipant = {
       id: participant.id,
       campaignId: participant.campaignId,
       name: participant.name,
       department: participant.department,
       position: participant.position,
-      token: participant.token,
+      token: typeof participant.token === "string" ? participant.token : "",
       ...(typeof participant.visitedAt === "string" ? { visitedAt: participant.visitedAt } : {}),
       ...(typeof participant.completedAt === "string" ? { completedAt: participant.completedAt } : {})
     } satisfies Participant;
@@ -621,11 +621,13 @@ export function createAssessmentRepository(storageKey = defaultStorageKey): Asse
       const normalized = normalizeName(name);
       if (!normalized || normalized.length > 60) return undefined;
       const state = read();
-      const openCampaignIds = new Set(state.campaigns.filter((campaign) => campaign.status === "open").map((campaign) => campaign.id));
-      const matches = state.participants.filter((person) => openCampaignIds.has(person.campaignId) && normalizeName(person.name) === normalized);
-      // ponytail: name-only entry rejects duplicates; add an employee ID if duplicate names must be supported.
-      if (matches.length !== 1) return undefined;
-      return matches[0];
+      for (const campaign of state.campaigns.filter((item) => item.status === "open")) {
+        const matches = state.participants.filter((person) => person.campaignId === campaign.id && normalizeName(person.name) === normalized);
+        // ponytail: name-only entry rejects duplicates within a campaign; add an employee ID if duplicate names must be supported.
+        if (matches.length === 1) return matches[0];
+        if (matches.length > 1) return undefined;
+      }
+      return undefined;
     },
 
     async authenticateParticipant(token, name) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Participant, RosterPerson, StoredResult } from "./store";
-import { buildDepartmentSummaryCsv, buildResultsCsv, buildRosterCsv, buildRosterDirectoryCsv, toCsv } from "./exports";
+import { buildDepartmentSummaryCsv, buildResultsCsv, buildRosterCsv, buildRosterDirectoryCsv, parseRosterDirectoryCsv, toCsv } from "./exports";
 import { getGrade } from "./questions";
 
 const alice: Participant = {
@@ -65,5 +65,18 @@ describe("csv exports", () => {
     expect(buildRosterDirectoryCsv(directory)).toBe(
       '"姓名","部门","岗位"\r\n"Alice","Sales","Lead"\r\n"Bob","Sales","Rep"',
     );
+  });
+
+  it("round-trips an exported roster directory through CSV parsing", () => {
+    const source: RosterPerson[] = [{
+      id: "r3",
+      name: "Alice, Jr.",
+      department: "Sales \"East\"",
+      position: "Lead\nPartner"
+    }];
+
+    expect(parseRosterDirectoryCsv(buildRosterDirectoryCsv(source))).toEqual([
+      { name: "Alice, Jr.", department: "Sales \"East\"", position: "Lead\nPartner" }
+    ]);
   });
 });

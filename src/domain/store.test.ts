@@ -54,6 +54,27 @@ describe("assessment repository", () => {
     expect(repository.listParticipants("c1").map((person) => person.id)).toEqual(["p1"]);
   });
 
+  it("keeps tokenless public participants available for name entry", () => {
+    localStorage.setItem("public-participant-state-test", JSON.stringify({
+      campaigns: [{ id: "c1", name: "First", status: "open", questionVersion: "v3.0", createdAt: "2026-08-09T00:00:00.000Z" }],
+      participants: [{ id: "p1", campaignId: "c1", name: "Alice", department: "Sales", position: "Lead" }],
+      drafts: {},
+      results: []
+    }));
+    const repository = createAssessmentRepository("public-participant-state-test");
+
+    expect(repository.findParticipantByName("Alice")?.id).toBe("p1");
+  });
+
+  it("uses the most recent open campaign for a reused roster member", () => {
+    const repository = createAssessmentRepository("multiple-open-campaigns-test");
+    repository.importRoster([{ name: "Alice", department: "Sales", position: "Lead" }]);
+    repository.createCampaign({ name: "First" });
+    const latest = repository.createCampaign({ name: "Latest" });
+
+    expect(repository.findParticipantByName("Alice")?.campaignId).toBe(latest.id);
+  });
+
   it("migrates the previous default question bank to the refreshed version", () => {
     localStorage.setItem("question-bank-migration-test", JSON.stringify({
       campaigns: [{ id: "campaign-1", status: "open", questionVersion: "v1.0" }],

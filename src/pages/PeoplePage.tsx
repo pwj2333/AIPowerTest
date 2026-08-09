@@ -1,14 +1,7 @@
 import { CheckCircle2, Download, FileUp, UploadCloud, UsersRound } from "lucide-react";
 import { useMemo, useState } from "react";
-import { buildRosterDirectoryCsv } from "../domain/exports";
-import { assessmentRepository, type RosterRow } from "../domain/store";
-
-function parseCsv(value: string): RosterRow[] {
-  return value.trim().split(/\r?\n/).filter(Boolean).slice(value.includes("姓名") ? 1 : 0).map((line) => {
-    const [name = "", department = "", position = ""] = line.split(",");
-    return { name, department, position };
-  });
-}
+import { buildRosterDirectoryCsv, parseRosterDirectoryCsv } from "../domain/exports";
+import { assessmentRepository } from "../domain/store";
 
 function downloadCsv(name: string, content: string) {
   const blob = new Blob(["\ufeff", content], { type: "text/csv;charset=utf-8" });
@@ -42,7 +35,7 @@ export default function PeoplePage() {
 
   const importRoster = async () => {
     setSaveError("");
-    const report = assessmentRepository.importRoster(parseCsv(csv));
+    const report = assessmentRepository.importRoster(parseRosterDirectoryCsv(csv));
     try {
       await assessmentRepository.flush();
       setMessage(`成功导入 ${report.imported.length} 人`);
