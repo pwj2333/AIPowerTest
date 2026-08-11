@@ -96,7 +96,7 @@ describe("administrator workspace", () => {
     const firstPrompt = assessmentRepository.getQuestionBank().questions[0].prompt;
     fireEvent.change(editor, { target: { value: (editor as HTMLTextAreaElement).value.replace(firstPrompt, `${firstPrompt}（正式场景）`) } });
     fireEvent.click(screen.getByRole("button", { name: "保存新版本" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("已保存 v3.1");
+    expect(await screen.findByRole("status")).toHaveTextContent("已保存 v4.1");
     expect(assessmentRepository.getQuestionBank().questions[0].prompt).toContain("正式场景");
   });
 

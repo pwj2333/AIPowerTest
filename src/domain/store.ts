@@ -102,7 +102,7 @@ interface AssessmentStatePatch {
 }
 
 const defaultStorageKey = "ai-capability-assessment-v2";
-const currentQuestionBankVersion = "v3.0";
+const currentQuestionBankVersion = "v4.0";
 const memoryStorage = new Map<string, string>();
 
 function makeId(prefix: string): string {
@@ -194,7 +194,9 @@ function normalizeState(stored: Partial<AssessmentState>): AssessmentState {
       ? { ...campaign, questionVersion: state.questionBank.version }
       : campaign);
   };
-  const isKnownDefaultVersion = state.questionBank.version === "v1.0" || state.questionBank.version === "v2.1";
+  const isKnownDefaultVersion = state.questionBank.version === "v1.0"
+    || state.questionBank.version === "v2.1"
+    || state.questionBank.version === "v3.0";
   let validCurrentBank = false;
   try {
     validCurrentBank = parseQuestionMarkdown(state.questionBank.markdown).length === 100;

@@ -85,10 +85,25 @@ describe("assessment repository", () => {
     }));
     const repository = createAssessmentRepository("question-bank-migration-test");
 
-    expect(repository.getQuestionBank().version).toBe("v3.0");
+    expect(repository.getQuestionBank().version).toBe("v4.0");
     expect(repository.getQuestionBank().questions).toHaveLength(100);
-    expect(repository.listCampaigns()[0].questionVersion).toBe("v3.0");
-    expect(repository.saveQuestionBank(defaultQuestionMarkdown).version).toBe("v3.1");
+    expect(repository.listCampaigns()[0].questionVersion).toBe("v4.0");
+    expect(repository.saveQuestionBank(defaultQuestionMarkdown).version).toBe("v4.1");
+  });
+
+  it("replaces the deployed v3 question bank with the approved revision", () => {
+    localStorage.setItem("approved-question-bank-migration-test", JSON.stringify({
+      campaigns: [{ id: "campaign-1", status: "open", questionVersion: "v3.0" }],
+      participants: [],
+      drafts: {},
+      results: [],
+      questionBank: { version: "v3.0", markdown: defaultQuestionMarkdown, updatedAt: "2026-08-01T00:00:00.000Z" }
+    }));
+    const repository = createAssessmentRepository("approved-question-bank-migration-test");
+
+    expect(repository.getQuestionBank().version).toBe("v4.0");
+    expect(repository.getQuestionBank().questions.find((question) => question.id === "q013")?.options[0].label).toBe("看到答案完整，就直接拿去用");
+    expect(repository.listCampaigns()[0].questionVersion).toBe("v4.0");
   });
 
   it("keeps a custom legacy question bank version for administrator review", () => {
@@ -117,9 +132,9 @@ describe("assessment repository", () => {
     const repository = createAssessmentRepository("legacy-question-bank-test");
 
     expect(() => repository.getQuestionBank()).not.toThrow();
-    expect(repository.getQuestionBank().version).toBe("v3.0");
+    expect(repository.getQuestionBank().version).toBe("v4.0");
     expect(repository.getQuestionBank().questions).toHaveLength(100);
-    expect(repository.listCampaigns()[0].questionVersion).toBe("v3.0");
+    expect(repository.listCampaigns()[0].questionVersion).toBe("v4.0");
   });
 
   it("imports valid roster rows and reports duplicates without storing them", () => {

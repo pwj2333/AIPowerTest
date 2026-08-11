@@ -85,56 +85,12 @@ export const grades: Grade[] = [
 
 type Score = 0 | 1 | 2 | 3;
 const optionTextLength = (text: string) => Array.from(text).length;
-const prohibitedOptionText = /直接|不管|随便|完全不用|不用确认|无需核对|凭感觉|就行|就好|再说|吧[，。！？]?$/;
-
-const detailVariants = [
-  ["后", "留痕", "并留痕", "过程留痕", "并全程留痕", "保留处理记录", "并保留处理记录", "同时保留处理记录"],
-  ["中", "说明", "并说明", "补充说明", "并补充说明", "说明本次理由", "并说明本次理由", "同时说明本次理由"],
-  ["前", "核对", "并核对", "过程核对", "并完成核对", "核对关键信息", "并核对关键信息", "同时核对关键信息"],
-  ["后", "复查", "并复查", "过程复查", "并完成复查", "复查关键结果", "并复查关键结果", "同时复查关键结果"],
-] as const;
-
-function addDetail(label: string, count: number, seed: number): string {
-  if (count <= 0) return label;
-  let remaining = count;
-  let detail = "";
-  while (remaining > 0) {
-    const chunkLength = Math.min(8, remaining);
-    detail += detailVariants[(seed + remaining) % detailVariants.length][chunkLength - 1];
-    remaining -= chunkLength;
-  }
-  if (Array.from(detail).length !== count) throw new Error("题库长度修饰语配置错误");
-  return `${label}${detail}`;
-}
-
-function balanceOptionLabels(labels: readonly [string, string, string, string], questionIndex: number): [string, string, string, string] {
-  const lengths = labels.map(optionTextLength);
-  const longestScore = questionIndex % 4;
-  const shortestScore = (questionIndex + 1) % 4;
-  const middleScores = [0, 1, 2, 3].filter((score) => score !== longestScore && score !== shortestScore);
-  const shortestLength = lengths[shortestScore];
-  const middleTarget = Math.max(shortestLength + 2, lengths[middleScores[0]], lengths[middleScores[1]]);
-  const longestTarget = Math.max(shortestLength + 4, middleTarget + 1, lengths[longestScore]);
-  if (longestTarget - shortestLength > 8 || longestTarget > 30 || shortestLength < 12) {
-    throw new Error(`题目 ${questionIndex + 1} 的答案长度无法自然平衡`);
-  }
-  const targets = [shortestLength, middleTarget, middleTarget, longestTarget];
-  targets[shortestScore] = shortestLength;
-  targets[middleScores[0]] = middleTarget;
-  targets[middleScores[1]] = middleTarget;
-  targets[longestScore] = longestTarget;
-  return labels.map((label, score) => addDetail(label, targets[score] - lengths[score], questionIndex + score)) as [string, string, string, string];
-}
-
-export function getOptionLengthSpread(question: AssessmentQuestion): number {
-  const lengths = question.options.map((option) => optionTextLength(option.label));
-  return Math.max(...lengths) - Math.min(...lengths);
-}
+const prohibitedOptionText = /不管|随便|完全不用|不用确认|无需核对|凭感觉|就行|就好|再说|吧[，。！？]?$/;
 
 export const questions: AssessmentQuestion[] = questionSeeds.map((seed, index) => {
   const [level, dimension, category, prompt, labels] = seed;
   const id = `q${String(index + 1).padStart(3, "0")}`;
-  const options = balanceOptionLabels(labels, index).map((label, score) => ({ id: `${id}-option-${score}`, label, score: score as Score }));
+  const options = labels.map((label, score) => ({ id: `${id}-option-${score}`, label, score: score as Score }));
   return { id, level, dimension, category, prompt, options };
 });
 
@@ -179,12 +135,6 @@ export function parseQuestionMarkdown(markdown: string): AssessmentQuestion[] {
     if (lengths.some((length) => length < 12 || length > 30)) throw new Error(`${id} 的答案必须为 12–30 个字符。`);
     if (options.some((option) => prohibitedOptionText.test(option.label))) throw new Error(`${id} 的答案包含容易提示分值的表达。`);
     if (new Set(options.map((option) => option.label)).size !== 4) throw new Error(`${id} 的四个答案不能重复。`);
-    if (lengths.filter((length) => length === Math.max(...lengths)).length !== 1 || lengths.filter((length) => length === Math.min(...lengths)).length !== 1) {
-      throw new Error(`${id} 必须各有一个最长和最短答案。`);
-    }
-    const spread = Math.max(...lengths) - Math.min(...lengths);
-    if (spread < 2 || spread > 8) throw new Error(`${id} 的最长与最短答案必须相差 2–8 个字符。`);
-
     return {
       id,
       level: Number(levelText),
@@ -205,19 +155,6 @@ export function parseQuestionMarkdown(markdown: string): AssessmentQuestion[] {
   }
   const dimensions = new Set(parsed.map((question) => question.dimension));
   if ((["office", "scenario", "workflow", "innovation"] as AbilityDimension[]).some((dimension) => !dimensions.has(dimension))) throw new Error("题库必须覆盖四个能力维度。");
-  const roles = Object.fromEntries([0, 1, 2, 3].map((score) => [score, { longest: 0, shortest: 0, middle: 0 }])) as Record<Score, Record<"longest" | "shortest" | "middle", number>>;
-  parsed.forEach((question) => {
-    const lengths = question.options.map((option) => optionTextLength(option.label));
-    const longest = Math.max(...lengths);
-    const shortest = Math.min(...lengths);
-    question.options.forEach((option, index) => {
-      const role = lengths[index] === longest ? "longest" : lengths[index] === shortest ? "shortest" : "middle";
-      roles[option.score][role] += 1;
-    });
-  });
-  if ([0, 1, 2, 3].some((score) => roles[score as Score].longest !== 25 || roles[score as Score].shortest !== 25 || roles[score as Score].middle !== 50)) {
-    throw new Error("每个分值必须恰好出现 25 次最长、25 次最短和 50 次中间答案。");
-  }
   return parsed;
 }
 

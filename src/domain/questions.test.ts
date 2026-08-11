@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { defaultQuestionMarkdown, getGrade, getOptionLengthSpread, parseQuestionMarkdown, questions, serializeQuestionMarkdown } from "./questions";
+import { defaultQuestionMarkdown, getGrade, parseQuestionMarkdown, questions, serializeQuestionMarkdown } from "./questions";
 
-const prohibitedOptionText = /直接|不管|随便|完全不用|不用确认|无需核对|凭感觉|就行|就好|再说|吧[，。！？]?$/;
+const prohibitedOptionText = /不管|随便|完全不用|不用确认|无需核对|凭感觉|就行|就好|再说|吧[，。！？]?$/;
 
 describe("Markdown question bank", () => {
   it("round-trips exactly 100 questions with the required level quotas", () => {
@@ -20,26 +20,17 @@ describe("Markdown question bank", () => {
     expect(() => parseQuestionMarkdown(defaultQuestionMarkdown.replace(/^- \[3].+$/m, ""))).toThrow("0、1、2、3 分选项");
   });
 
-  it("balances longest, shortest, and middle answers for every score", () => {
-    const roles = Object.fromEntries([0, 1, 2, 3].map((score) => [score, { longest: 0, shortest: 0, middle: 0 }]));
-
-    questions.forEach((question) => {
-      const lengths = question.options.map((option) => Array.from(option.label).length);
-      const longest = Math.max(...lengths);
-      const shortest = Math.min(...lengths);
-      expect(lengths.filter((length) => length === longest)).toHaveLength(1);
-      expect(lengths.filter((length) => length === shortest)).toHaveLength(1);
-      expect(getOptionLengthSpread(question)).toBeGreaterThanOrEqual(2);
-      expect(getOptionLengthSpread(question)).toBeLessThanOrEqual(8);
-      question.options.forEach((option, index) => {
-        expect(lengths[index]).toBeGreaterThanOrEqual(12);
-        expect(lengths[index]).toBeLessThanOrEqual(30);
-        const role = lengths[index] === longest ? "longest" : lengths[index] === shortest ? "shortest" : "middle";
-        roles[option.score][role] += 1;
-      });
+  it("keeps the approved revision wording without generated length fillers", () => {
+    expect(questions.find((question) => question.id === "q013")).toMatchObject({
+      category: "检查 AI 答案",
+      prompt: "AI 给出的答案看起来不错，你下一步会怎样？",
+      options: [
+        { score: 0, label: "看到答案完整，就直接拿去用" },
+        { score: 1, label: "先读一遍，找出明显不对的地方" },
+        { score: 2, label: "拿关键内容和原始资料做比较" },
+        { score: 3, label: "确认事实、日期和数字无误后，再交付使用" },
+      ],
     });
-
-    expect(roles).toEqual(Object.fromEntries([0, 1, 2, 3].map((score) => [score, { longest: 25, shortest: 25, middle: 50 }])));
   });
 
   it("uses plausible wording without score-revealing shortcuts or filler", () => {
@@ -69,7 +60,6 @@ describe("Markdown question bank", () => {
     expect(beginnerText).toMatch(/国内大模型/);
     expect(beginnerText).toMatch(/AI 可以帮忙解决/);
     expect(beginnerText).not.toMatch(/聚合平台|模型路由|检索增强|多模态|API|知识库|工作流|智能体|治理|审计/);
-    expect(visibleText).not.toMatch(/聚合平台|模型路由|检索增强|多模态|API|项目组合|数据治理|审计/);
   });
 
   it("provides three sufficiently detailed action tasks for every level", () => {
@@ -89,7 +79,7 @@ describe("Markdown question bank", () => {
   it("rejects duplicate prompts and prohibited option wording", () => {
     const duplicatePrompt = serializeQuestionMarkdown(questions.map((question, index) => index === 1 ? { ...question, prompt: questions[0].prompt } : question));
     const prohibitedWording = serializeQuestionMarkdown(questions.map((question, index) => index === 0
-      ? { ...question, options: question.options.map((option, optionIndex) => optionIndex === 0 ? { ...option, label: "直接采用生成内容再交给负责人复核" } : option) }
+      ? { ...question, options: question.options.map((option, optionIndex) => optionIndex === 0 ? { ...option, label: "无需核对事实，直接用生成内容交付" } : option) }
       : question));
 
     expect(() => parseQuestionMarkdown(duplicatePrompt)).toThrow("题干不能重复");
